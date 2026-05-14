@@ -5,27 +5,34 @@ services:
       context: .
       dockerfile: Dockerfile
       # NEXT_PUBLIC_* values are baked into the client bundle at build time.
-      # Change them in `.env` and rebuild (`docker compose up -d --build admin`).
+      # Change them in `.env.local` and rebuild
+      # (`docker compose up -d --build admin`).
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4021/v1}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.coaching-center.uz/v1}
         NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
     image: football-coach-admin:latest
     restart: unless-stopped
+    # Single PORT env var controls both the host port AND the Next.js server
+    # port inside the container — no double mapping, no surprises.
     ports:
-      - "${ADMIN_PORT:-3000}:3000"
+      - "${PORT:-3000}:${PORT:-3000}"
     environment:
       NODE_ENV: production
+      PORT: ${PORT:-3000}
+      HOSTNAME: 0.0.0.0
       # Server-side runtime env (also exposed to the client because of the
       # NEXT_PUBLIC_ prefix — kept here for completeness / SSR consistency).
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4021/v1}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.coaching-center.uz/v1}
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+    # Compose's default `env_file` is `.env`. We pull from `.env.local` so a
+    # single file drives both `npm run dev` and `docker compose up`.
+    env_file:
+      - .env.local
     healthcheck:
       test:
         [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3000/login').then(r=>{if(r.status>=500)process.exit(1)}).catch(()=>process.exit(1))",
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:'+ (process.env.PORT||3000) +'/login').then(r=>{if(r.status>=500)process.exit(1)}).catch(()=>process.exit(1))\"",
         ]
       interval: 30s
       timeout: 5s
