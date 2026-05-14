@@ -24,10 +24,14 @@ services:
       # NEXT_PUBLIC_ prefix — kept here for completeness / SSR consistency).
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.coaching-center.uz/v1}
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
-    # Compose's default `env_file` is `.env`. We pull from `.env.local` so a
-    # single file drives both `npm run dev` and `docker compose up`.
+    # Container reads runtime env from `.env` (compose default, server use).
+    # `.env.local` is the Next.js dev convention — symlink/copy to `.env` on
+    # the server, or pass `--env-file=.env.local` to compose commands.
     env_file:
-      - .env.local
+      - path: .env
+        required: false
+      - path: .env.local
+        required: false
     healthcheck:
       test:
         [
