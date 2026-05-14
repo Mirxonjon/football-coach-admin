@@ -1,5 +1,9 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
-import type { DiscountType, SubscriptionPlan } from "@/lib/api-types";
+import type {
+  DiscountType,
+  PlanFeature,
+  SubscriptionPlan,
+} from "@/lib/api-types";
 
 export type PlanPayload = {
   titleUz: string;
@@ -12,6 +16,7 @@ export type PlanPayload = {
   discountPercent: number;
   fixedDiscountPrice?: number | null;
   isActive?: boolean;
+  features?: PlanFeature[];
 };
 
 export const plansApi = {

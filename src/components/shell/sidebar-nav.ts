@@ -11,6 +11,9 @@ import {
   Package,
   UploadCloud,
   BarChart3,
+  Crown,
+  FileText,
+  Film,
   type LucideIcon,
 } from "lucide-react";
 
@@ -29,6 +32,8 @@ export const navItems: NavItem[] = [
   { group: "content", label: "Yosh toifalari", href: "/age-categories", icon: Baby },
   { group: "content", label: "Mashg'ulot toifalari", href: "/training-categories", icon: Dumbbell },
   { group: "content", label: "Darslar", href: "/lessons", icon: GraduationCap },
+  { group: "content", label: "Masterklass toifalari", href: "/masterclass-categories", icon: Crown },
+  { group: "content", label: "Masterklasslar", href: "/masterclasses", icon: Film },
   { group: "content", label: "Kitob toifalari", href: "/book-categories", icon: Library },
   { group: "content", label: "Kitoblar", href: "/books", icon: BookOpen },
 
@@ -36,6 +41,7 @@ export const navItems: NavItem[] = [
   { group: "revenue", label: "Obunalar", href: "/subscriptions", icon: CreditCard },
 
   { group: "ops", label: "Xabarnomalar", href: "/notifications", icon: BellRing },
+  { group: "ops", label: "Huquqiy hujjatlar", href: "/legal", icon: FileText },
   { group: "ops", label: "Yuklash (R2)", href: "/uploads", icon: UploadCloud },
 ];
 

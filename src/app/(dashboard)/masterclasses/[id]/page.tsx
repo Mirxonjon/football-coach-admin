@@ -13,7 +13,6 @@ import {
   ArrowLeft,
   ArrowDown,
   ArrowUp,
-  Eye,
   FileText,
   Film,
   Heading1,
@@ -29,7 +28,6 @@ import {
   Smartphone,
   Trash2,
   Upload,
-  X as XIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -37,9 +35,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -56,24 +54,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  lessonsApi,
-  type CreateBlockDto,
-  type LessonDetail,
-  type UpdateBlockDto,
-} from "@/features/lessons/lessons.api";
-import {
-  uploadAsset,
-  type UploadFolder,
-} from "@/features/uploads/upload.api";
-import type { BlockType, LessonBlock } from "@/lib/api-types";
+  masterclassesApi,
+  type CreateMasterclassBlockDto,
+  type MasterclassDetail,
+  type UpdateMasterclassBlockDto,
+  type UpdateMasterclassDto,
+} from "@/features/masterclasses/masterclasses.api";
+import { uploadAsset, type UploadFolder } from "@/features/uploads/upload.api";
+import type {
+  BlockType,
+  MasterclassBlock,
+  MasterclassCategory,
+} from "@/lib/api-types";
 import { apiErrorMessage } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { TranslateButton } from "@/components/translate-button";
-import { useBiLang } from "@/lib/i18n";
-
-// ---------------------------------------------------------------------------
-// Block-type metadata
-// ---------------------------------------------------------------------------
+import { useBiLang, useT } from "@/lib/i18n";
 
 const BLOCK_TYPES: BlockType[] = [
   "TITLE",
@@ -94,11 +90,7 @@ const BLOCK_META: Record<
     accept?: string;
   }
 > = {
-  TITLE: {
-    label: "Sarlavha",
-    icon: Heading1,
-    tone: "oklch(0.62 0.19 260)",
-  },
+  TITLE: { label: "Sarlavha bloki", icon: Heading1, tone: "oklch(0.62 0.19 260)" },
   TEXT: { label: "Matn", icon: FileText, tone: "oklch(0.62 0.15 220)" },
   VIDEO: {
     label: "Video",
@@ -121,111 +113,110 @@ const BLOCK_META: Record<
     folder: "books",
     accept: "application/pdf,application/*",
   },
-  HINT: {
-    label: "Maslahat",
-    icon: HelpCircle,
-    tone: "oklch(0.75 0.17 80)",
-  },
+  HINT: { label: "Maslahat", icon: HelpCircle, tone: "oklch(0.75 0.17 80)" },
 };
 
 function isMediaBlock(t: BlockType) {
   return t === "VIDEO" || t === "IMAGE" || t === "FILE";
 }
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
-export default function LessonDetailPage() {
+export default function MasterclassDetailPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
   const bi = useBiLang();
-  const lessonId = Number(params.id);
+  const { t } = useT();
+  const masterclassId = Number(params.id);
 
-  const lessonQ = useQuery({
-    queryKey: ["lesson", lessonId],
-    queryFn: () => lessonsApi.byId(lessonId),
-    enabled: Number.isFinite(lessonId) && lessonId > 0,
+  const mcQ = useQuery({
+    queryKey: ["masterclass", masterclassId],
+    queryFn: () => masterclassesApi.byId(masterclassId),
+    enabled: Number.isFinite(masterclassId) && masterclassId > 0,
   });
 
   const categoriesQ = useQuery({
-    queryKey: ["training-categories"],
-    queryFn: lessonsApi.trainingCategories,
+    queryKey: ["masterclass-categories"],
+    queryFn: () => masterclassesApi.categories(),
   });
 
-  const [editLessonOpen, setEditLessonOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [previewDevice, setPreviewDevice] = useState<
     "mobile" | "desktop" | null
   >(null);
   const [initialType, setInitialType] = useState<BlockType>("TEXT");
-  const [editBlockTarget, setEditBlockTarget] = useState<LessonBlock | null>(
-    null,
-  );
+  const [editBlockTarget, setEditBlockTarget] =
+    useState<MasterclassBlock | null>(null);
   const [deleteBlockTarget, setDeleteBlockTarget] =
-    useState<LessonBlock | null>(null);
+    useState<MasterclassBlock | null>(null);
 
   const sortedBlocks = useMemo(() => {
-    const list = lessonQ.data?.lessonBlocks ?? [];
+    const list = mcQ.data?.masterclassBlocks ?? [];
     return [...list].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
-  }, [lessonQ.data]);
+  }, [mcQ.data]);
 
   const nextSequence = useMemo(
     () =>
       sortedBlocks.length
         ? Math.max(...sortedBlocks.map((b) => b.sequenceOrder)) + 1
         : 1,
-    [sortedBlocks],
+    [sortedBlocks]
   );
 
-  // ---------- mutations ----------
-
   const deleteBlockMut = useMutation({
-    mutationFn: (id: number) => lessonsApi.removeBlock(id),
+    mutationFn: (id: number) => masterclassesApi.removeBlock(id),
     onSuccess: () => {
-      toast.success("Blok o'chirildi");
+      toast.success(t("O'chirildi"));
       setDeleteBlockTarget(null);
-      qc.invalidateQueries({ queryKey: ["lesson", lessonId] });
+      qc.invalidateQueries({ queryKey: ["masterclass", masterclassId] });
     },
     onError: (e) => toast.error(apiErrorMessage(e)),
   });
 
-  // Reorder via swapping sequenceOrder — optimistic update for snappy UX.
   const reorderMut = useMutation({
     mutationFn: async ({
       a,
       b,
     }: {
-      a: LessonBlock;
-      b: LessonBlock;
+      a: MasterclassBlock;
+      b: MasterclassBlock;
     }) => {
       await Promise.all([
-        lessonsApi.updateBlock(a.id, { sequenceOrder: b.sequenceOrder }),
-        lessonsApi.updateBlock(b.id, { sequenceOrder: a.sequenceOrder }),
+        masterclassesApi.updateBlock(a.id, { sequenceOrder: b.sequenceOrder }),
+        masterclassesApi.updateBlock(b.id, { sequenceOrder: a.sequenceOrder }),
       ]);
     },
     onMutate: async ({ a, b }) => {
-      await qc.cancelQueries({ queryKey: ["lesson", lessonId] });
-      const previous = qc.getQueryData<LessonDetail>(["lesson", lessonId]);
+      await qc.cancelQueries({ queryKey: ["masterclass", masterclassId] });
+      const previous = qc.getQueryData<MasterclassDetail>([
+        "masterclass",
+        masterclassId,
+      ]);
       if (previous) {
-        const next: LessonDetail = {
+        const next: MasterclassDetail = {
           ...previous,
-          lessonBlocks: previous.lessonBlocks.map((blk) => {
-            if (blk.id === a.id) return { ...blk, sequenceOrder: b.sequenceOrder };
-            if (blk.id === b.id) return { ...blk, sequenceOrder: a.sequenceOrder };
+          masterclassBlocks: previous.masterclassBlocks.map((blk) => {
+            if (blk.id === a.id)
+              return { ...blk, sequenceOrder: b.sequenceOrder };
+            if (blk.id === b.id)
+              return { ...blk, sequenceOrder: a.sequenceOrder };
             return blk;
           }),
         };
-        qc.setQueryData<LessonDetail>(["lesson", lessonId], next);
+        qc.setQueryData<MasterclassDetail>(
+          ["masterclass", masterclassId],
+          next
+        );
       }
       return { previous };
     },
     onError: (e, _vars, ctx) => {
-      if (ctx?.previous) qc.setQueryData(["lesson", lessonId], ctx.previous);
+      if (ctx?.previous)
+        qc.setQueryData(["masterclass", masterclassId], ctx.previous);
       toast.error(apiErrorMessage(e));
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["lesson", lessonId] }),
+    onSettled: () =>
+      qc.invalidateQueries({ queryKey: ["masterclass", masterclassId] }),
   });
 
   const handleMove = (index: number, dir: -1 | 1) => {
@@ -235,19 +226,17 @@ export default function LessonDetailPage() {
     reorderMut.mutate({ a: target, b: swap });
   };
 
-  // ---------- render ----------
-
-  if (!Number.isFinite(lessonId)) {
+  if (!Number.isFinite(masterclassId)) {
     return (
       <EmptyState
         icon={AlertTriangle}
-        title="Noto'g'ri dars ID"
-        description="Iltimos, darslar ro'yxatiga qayting."
+        title={t("Topilmadi")}
+        description={t("Iltimos, masterklasslar ro'yxatiga qayting.")}
         action={
           <Button asChild variant="outline">
-            <Link href="/lessons">
+            <Link href="/masterclasses">
               <ArrowLeft className="h-4 w-4" />
-              Darslar
+              {t("Masterklasslar")}
             </Link>
           </Button>
         }
@@ -255,7 +244,7 @@ export default function LessonDetailPage() {
     );
   }
 
-  if (lessonQ.isLoading) {
+  if (mcQ.isLoading) {
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-10 w-64" />
@@ -265,17 +254,17 @@ export default function LessonDetailPage() {
     );
   }
 
-  if (lessonQ.isError || !lessonQ.data) {
+  if (mcQ.isError || !mcQ.data) {
     return (
       <EmptyState
         icon={AlertTriangle}
-        title="Dars topilmadi"
-        description={apiErrorMessage(lessonQ.error) || "Qaytadan urinib ko'ring"}
+        title={t("Topilmadi")}
+        description={apiErrorMessage(mcQ.error) || t("Qayta urinib ko'ring")}
         action={
           <Button asChild variant="outline">
-            <Link href="/lessons">
+            <Link href="/masterclasses">
               <ArrowLeft className="h-4 w-4" />
-              Darslar
+              {t("Masterklasslar")}
             </Link>
           </Button>
         }
@@ -283,10 +272,10 @@ export default function LessonDetailPage() {
     );
   }
 
-  const lesson = lessonQ.data;
+  const mc = mcQ.data;
   const cat =
-    lesson.trainingCategory ??
-    (categoriesQ.data ?? []).find((c) => c.id === lesson.trainingCategoryId);
+    mc.masterclassCategory ??
+    (categoriesQ.data ?? []).find((c) => c.id === mc.masterclassCategoryId);
   const catName = cat ? bi.primary(cat.titleUz, cat.titleRu) : undefined;
 
   return (
@@ -296,37 +285,32 @@ export default function LessonDetailPage() {
           variant="ghost"
           size="sm"
           className="w-fit -ml-2"
-          onClick={() => router.push("/lessons")}
+          onClick={() => router.push("/masterclasses")}
         >
           <ArrowLeft className="h-4 w-4" />
-          Darslar
+          {t("Masterklasslar")}
         </Button>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-semibold tracking-tight">
-                {bi.primary(lesson.titleUz, lesson.titleRu)}
+                {bi.primary(mc.titleUz, mc.titleRu)}
               </h1>
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setEditLessonOpen(true)}
-                aria-label="Sarlavhani tahrirlash"
+                onClick={() => setEditOpen(true)}
+                aria-label={t("Tahrirlash")}
               >
                 <Pencil className="h-4 w-4" />
               </Button>
             </div>
             <p className="text-sm text-[var(--muted-foreground)]">
-              {bi.secondary(lesson.titleUz, lesson.titleRu)}
+              {bi.secondary(mc.titleUz, mc.titleRu)}
             </p>
             <div className="mt-1 flex items-center gap-2 text-xs text-[var(--muted-foreground)]">
-              <span className="font-mono">#{lesson.id}</span>
+              <span className="font-mono">#{mc.id}</span>
               {catName && <Badge variant="secondary">{catName}</Badge>}
-              {lesson.isFree && (
-                <Badge className="bg-[oklch(0.72_0.19_145)] text-white">
-                  Bepul
-                </Badge>
-              )}
               <span>· {sortedBlocks.length} blok</span>
             </div>
           </div>
@@ -337,7 +321,7 @@ export default function LessonDetailPage() {
               disabled={sortedBlocks.length === 0}
             >
               <Smartphone className="h-4 w-4" />
-              Telefon
+              {t("Telefon")}
             </Button>
             <Button
               variant="outline"
@@ -345,7 +329,7 @@ export default function LessonDetailPage() {
               disabled={sortedBlocks.length === 0}
             >
               <Monitor className="h-4 w-4" />
-              Desktop
+              {t("Desktop")}
             </Button>
           </div>
         </div>
@@ -354,8 +338,10 @@ export default function LessonDetailPage() {
       {sortedBlocks.length === 0 ? (
         <EmptyState
           icon={FileText}
-          title="Bloklar yo'q"
-          description="Darsga birinchi blokni qo'shish uchun pastdagi tugmani bosing."
+          title={t("Bloklar yo'q")}
+          description={t(
+            "Masterklassga birinchi blokni qo'shish uchun pastdagi tugmani bosing."
+          )}
           action={
             <Button
               onClick={() => {
@@ -364,7 +350,7 @@ export default function LessonDetailPage() {
               }}
             >
               <Plus className="h-4 w-4" />
-              Blok qo&apos;shish
+              {t("Blok qo'shish")}
             </Button>
           }
         />
@@ -386,7 +372,6 @@ export default function LessonDetailPage() {
         </ol>
       )}
 
-      {/* Floating add button */}
       <div className="fixed bottom-6 right-6 z-40">
         <AddBlockMenu
           onPick={(t) => {
@@ -396,19 +381,19 @@ export default function LessonDetailPage() {
         />
       </div>
 
-      <EditLessonDialog
-        open={editLessonOpen}
-        onOpenChange={setEditLessonOpen}
-        lesson={lesson}
-        categories={categoriesQ.data ?? []}
-      />
-
-      <LessonPreviewDialog
+      <MasterclassPreviewDialog
         device={previewDevice}
         onClose={() => setPreviewDevice(null)}
-        lesson={lesson}
+        masterclass={mc}
         blocks={sortedBlocks}
         categoryName={catName}
+      />
+
+      <EditMasterclassDialog
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        masterclass={mc}
+        categories={categoriesQ.data ?? []}
       />
 
       <BlockFormDialog
@@ -416,7 +401,7 @@ export default function LessonDetailPage() {
         open={addOpen}
         onOpenChange={setAddOpen}
         mode="create"
-        lessonId={lessonId}
+        masterclassId={masterclassId}
         nextSequence={nextSequence}
         initialType={initialType}
       />
@@ -426,7 +411,7 @@ export default function LessonDetailPage() {
         open={!!editBlockTarget}
         onOpenChange={(v) => !v && setEditBlockTarget(null)}
         mode="edit"
-        lessonId={lessonId}
+        masterclassId={masterclassId}
         nextSequence={nextSequence}
         block={editBlockTarget ?? undefined}
       />
@@ -437,19 +422,18 @@ export default function LessonDetailPage() {
       >
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Blokni o&apos;chirish</DialogTitle>
+            <DialogTitle>{t("Blokni o'chirish")}</DialogTitle>
             <DialogDescription>
               {deleteBlockTarget
-                ? `"${BLOCK_META[deleteBlockTarget.blockType].label}" bloki o'chiriladi. Bu amalni bekor qilib bo'lmaydi.`
+                ? `"${t(BLOCK_META[deleteBlockTarget.blockType].label)}" — ${t(
+                    "Bu amalni bekor qilib bo'lmaydi."
+                  )}`
                 : ""}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteBlockTarget(null)}
-            >
-              Bekor qilish
+            <Button variant="outline" onClick={() => setDeleteBlockTarget(null)}>
+              {t("Bekor qilish")}
             </Button>
             <Button
               variant="destructive"
@@ -462,7 +446,7 @@ export default function LessonDetailPage() {
               {deleteBlockMut.isPending && (
                 <Loader2 className="h-4 w-4 animate-spin" />
               )}
-              O&apos;chirish
+              {t("O'chirish")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -472,7 +456,7 @@ export default function LessonDetailPage() {
 }
 
 // ---------------------------------------------------------------------------
-// Block card
+// Block card (same pattern as lesson detail)
 // ---------------------------------------------------------------------------
 
 function BlockCard({
@@ -485,7 +469,7 @@ function BlockCard({
   onDelete,
   reorderPending,
 }: {
-  block: LessonBlock;
+  block: MasterclassBlock;
   index: number;
   total: number;
   onMoveUp: () => void;
@@ -494,15 +478,13 @@ function BlockCard({
   onDelete: () => void;
   reorderPending: boolean;
 }) {
+  const { t } = useT();
   const meta = BLOCK_META[block.blockType];
   const Icon = meta.icon;
   const media = isMediaBlock(block.blockType);
 
   return (
-    <li
-      className="relative flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm sm:flex-row sm:items-start sm:gap-4"
-      aria-label={`Blok ${index + 1}: ${meta.label}`}
-    >
+    <li className="relative flex flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-sm sm:flex-row sm:items-start sm:gap-4">
       <div className="flex flex-row items-center gap-3 sm:flex-col sm:items-center sm:gap-2">
         <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--muted)] text-xs font-semibold">
           {block.sequenceOrder}
@@ -518,17 +500,12 @@ function BlockCard({
             <Icon className="h-4 w-4" />
           </span>
           <Badge variant="outline" className="text-[10px]">
-            {meta.label}
+            {t(meta.label)}
           </Badge>
-          {block.isFree && (
-            <Badge className="bg-[oklch(0.72_0.19_145)] text-[10px] text-white">
-              Bepul
-            </Badge>
-          )}
         </div>
       </div>
 
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1">
         {media ? (
           <MediaPreview block={block} />
         ) : (
@@ -559,10 +536,9 @@ function BlockCard({
             </div>
           </div>
         )}
-
         {block.duration != null && (
           <p className="mt-2 text-xs text-[var(--muted-foreground)]">
-            Davomiyligi: {block.duration} soniya
+            {block.duration} soniya
           </p>
         )}
       </div>
@@ -573,7 +549,6 @@ function BlockCard({
           size="icon"
           onClick={onMoveUp}
           disabled={index === 0 || reorderPending}
-          aria-label="Yuqoriga"
         >
           <ArrowUp className="h-4 w-4" />
         </Button>
@@ -582,24 +557,13 @@ function BlockCard({
           size="icon"
           onClick={onMoveDown}
           disabled={index === total - 1 || reorderPending}
-          aria-label="Pastga"
         >
           <ArrowDown className="h-4 w-4" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onEdit}
-          aria-label="Tahrirlash"
-        >
+        <Button variant="ghost" size="icon" onClick={onEdit}>
           <Pencil className="h-4 w-4" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onDelete}
-          aria-label="O'chirish"
-        >
+        <Button variant="ghost" size="icon" onClick={onDelete}>
           <Trash2 className="h-4 w-4 text-[var(--destructive)]" />
         </Button>
       </div>
@@ -607,7 +571,7 @@ function BlockCard({
   );
 }
 
-function MediaPreview({ block }: { block: LessonBlock }) {
+function MediaPreview({ block }: { block: MasterclassBlock }) {
   const url = block.contentUz || block.contentRu;
   if (!url) {
     return (
@@ -616,49 +580,25 @@ function MediaPreview({ block }: { block: LessonBlock }) {
       </p>
     );
   }
-
   if (block.blockType === "IMAGE") {
     return (
-      <div className="flex flex-col gap-2">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={url}
-          alt="Preview"
-          className="max-h-48 w-auto rounded-md border border-[var(--border)] object-contain"
-        />
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="truncate text-xs text-[var(--primary)] underline"
-        >
-          {url}
-        </a>
-      </div>
+      /* eslint-disable-next-line @next/next/no-img-element */
+      <img
+        src={url}
+        alt=""
+        className="max-h-48 w-auto rounded-md border border-[var(--border)] object-contain"
+      />
     );
   }
-
   if (block.blockType === "VIDEO") {
     return (
-      <div className="flex flex-col gap-2">
-        <video
-          controls
-          src={url}
-          className="max-h-56 w-full rounded-md border border-[var(--border)] bg-black"
-        />
-        <a
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          className="truncate text-xs text-[var(--primary)] underline"
-        >
-          {url}
-        </a>
-      </div>
+      <video
+        controls
+        src={url}
+        className="max-h-56 w-full rounded-md border border-[var(--border)] bg-black"
+      />
     );
   }
-
-  // FILE
   return (
     <div className="flex items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 p-3">
       <Paperclip className="h-4 w-4 shrink-0" />
@@ -675,10 +615,11 @@ function MediaPreview({ block }: { block: LessonBlock }) {
 }
 
 // ---------------------------------------------------------------------------
-// Floating add-menu
+// Add-block floating menu
 // ---------------------------------------------------------------------------
 
 function AddBlockMenu({ onPick }: { onPick: (t: BlockType) => void }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   return (
     <div className="relative">
@@ -687,21 +628,21 @@ function AddBlockMenu({ onPick }: { onPick: (t: BlockType) => void }) {
           className="absolute bottom-14 right-0 flex min-w-[180px] flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--popover)] p-2 shadow-lg"
           role="menu"
         >
-          {BLOCK_TYPES.map((t) => {
-            const meta = BLOCK_META[t];
+          {BLOCK_TYPES.map((type) => {
+            const meta = BLOCK_META[type];
             const Icon = meta.icon;
             return (
               <button
-                key={t}
+                key={type}
                 role="menuitem"
                 onClick={() => {
-                  onPick(t);
+                  onPick(type);
                   setOpen(false);
                 }}
                 className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-left hover:bg-[var(--accent)]"
               >
                 <Icon className="h-4 w-4" style={{ color: meta.tone }} />
-                {meta.label}
+                {t(meta.label)}
               </button>
             );
           })}
@@ -713,161 +654,139 @@ function AddBlockMenu({ onPick }: { onPick: (t: BlockType) => void }) {
         className="h-12 rounded-full px-5 shadow-xl"
       >
         <Plus className="h-5 w-5" />
-        Blok qo&apos;shish
+        {t("Blok qo'shish")}
       </Button>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Edit lesson title dialog
+// Edit masterclass dialog
 // ---------------------------------------------------------------------------
 
-const lessonEditSchema = z.object({
-  titleUz: z.string().min(2, "Kamida 2 ta belgi"),
-  titleRu: z.string().min(2, "Kamida 2 ta belgi"),
-  trainingCategoryId: z.number().int().positive("Toifa kerak"),
-  isFree: z.boolean(),
+const editSchema = z.object({
+  titleUz: z.string().min(2),
+  titleRu: z.string().min(2),
+  masterclassCategoryId: z.number().int().positive(),
 });
-type LessonEditValues = z.infer<typeof lessonEditSchema>;
+type EditValues = z.infer<typeof editSchema>;
 
-function EditLessonDialog({
+function EditMasterclassDialog({
   open,
   onOpenChange,
-  lesson,
+  masterclass,
   categories,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  lesson: LessonDetail;
-  categories: { id: number; titleUz: string }[];
+  masterclass: MasterclassDetail;
+  categories: MasterclassCategory[];
 }) {
+  const { t } = useT();
+  const bi = useBiLang();
   const qc = useQueryClient();
 
-  const form = useForm<LessonEditValues>({
-    resolver: zodResolver(lessonEditSchema),
+  const form = useForm<EditValues>({
+    resolver: zodResolver(editSchema),
     values: {
-      titleUz: lesson.titleUz,
-      titleRu: lesson.titleRu,
-      trainingCategoryId: lesson.trainingCategoryId,
-      isFree: lesson.isFree ?? false,
+      titleUz: masterclass.titleUz,
+      titleRu: masterclass.titleRu,
+      masterclassCategoryId: masterclass.masterclassCategoryId,
     },
   });
 
   const mut = useMutation({
-    mutationFn: (body: LessonEditValues) => lessonsApi.update(lesson.id, body),
+    mutationFn: (body: UpdateMasterclassDto) =>
+      masterclassesApi.update(masterclass.id, body),
     onSuccess: () => {
-      toast.success("Dars yangilandi");
-      qc.invalidateQueries({ queryKey: ["lesson", lesson.id] });
-      qc.invalidateQueries({ queryKey: ["lessons"] });
+      toast.success(t("Yangilandi"));
+      qc.invalidateQueries({ queryKey: ["masterclass", masterclass.id] });
+      qc.invalidateQueries({ queryKey: ["masterclasses"] });
       onOpenChange(false);
     },
     onError: (e) => toast.error(apiErrorMessage(e)),
   });
 
-  const selectedCat = form.watch("trainingCategoryId");
+  const selectedCat = form.watch("masterclassCategoryId");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Darsni tahrirlash</DialogTitle>
+          <DialogTitle>{t("Masterklassni tahrirlash")}</DialogTitle>
         </DialogHeader>
         <form
-          onSubmit={form.handleSubmit((v) => mut.mutate(v))}
+          onSubmit={form.handleSubmit((v) =>
+            mut.mutate({
+              titleUz: v.titleUz,
+              titleRu: v.titleRu,
+              masterclassCategoryId: v.masterclassCategoryId,
+            })
+          )}
           className="flex flex-col gap-4"
         >
           <div className="flex flex-col gap-2">
-            <Label>Mashg&apos;ulot toifasi</Label>
+            <Label>{t("Masterklass toifasi")}</Label>
             <Select
               value={selectedCat ? String(selectedCat) : ""}
               onValueChange={(v) =>
-                form.setValue("trainingCategoryId", Number(v), {
+                form.setValue("masterclassCategoryId", Number(v), {
                   shouldValidate: true,
                 })
               }
             >
               <SelectTrigger>
-                <SelectValue placeholder="Toifani tanlang" />
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {categories.map((c) => (
                   <SelectItem key={c.id} value={String(c.id)}>
-                    {c.titleUz}
+                    {bi.primary(c.titleUz, c.titleRu)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            {form.formState.errors.trainingCategoryId && (
-              <p className="text-xs text-[var(--destructive)]">
-                {form.formState.errors.trainingCategoryId.message}
-              </p>
-            )}
           </div>
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="titleUz">Sarlavha (UZ)</Label>
-              <TranslateButton
-                direction="ru-uz"
-                source={form.watch("titleRu")}
-                onTranslated={(uz) =>
-                  form.setValue("titleUz", uz, { shouldDirty: true })
-                }
-              />
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="titleUz">{t("Sarlavha (UZ)")}</Label>
+                <TranslateButton
+                  direction="ru-uz"
+                  source={form.watch("titleRu")}
+                  onTranslated={(uz) =>
+                    form.setValue("titleUz", uz, { shouldDirty: true })
+                  }
+                />
+              </div>
+              <Input id="titleUz" {...form.register("titleUz")} />
             </div>
-            <Input id="titleUz" {...form.register("titleUz")} />
-            {form.formState.errors.titleUz && (
-              <p className="text-xs text-[var(--destructive)]">
-                {form.formState.errors.titleUz.message}
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="titleRu">Sarlavha (RU)</Label>
-              <TranslateButton
-                direction="uz-ru"
-                source={form.watch("titleUz")}
-                onTranslated={(ru) =>
-                  form.setValue("titleRu", ru, { shouldDirty: true })
-                }
-              />
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="titleRu">{t("Sarlavha (RU)")}</Label>
+                <TranslateButton
+                  source={form.watch("titleUz")}
+                  onTranslated={(ru) =>
+                    form.setValue("titleRu", ru, { shouldDirty: true })
+                  }
+                />
+              </div>
+              <Input id="titleRu" {...form.register("titleRu")} />
             </div>
-            <Input id="titleRu" {...form.register("titleRu")} />
-            {form.formState.errors.titleRu && (
-              <p className="text-xs text-[var(--destructive)]">
-                {form.formState.errors.titleRu.message}
-              </p>
-            )}
           </div>
-          <div className="flex items-start justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 p-3">
-            <div className="flex flex-col">
-              <Label htmlFor="lesson-is-free" className="cursor-pointer">
-                Bepul dars
-              </Label>
-              <p className="text-xs text-[var(--muted-foreground)]">
-                Yoqilganda dars obunasiz ham ko&apos;rsatiladi.
-              </p>
-            </div>
-            <Switch
-              id="lesson-is-free"
-              checked={form.watch("isFree")}
-              onCheckedChange={(v) =>
-                form.setValue("isFree", v, { shouldDirty: true })
-              }
-            />
-          </div>
+
           <DialogFooter>
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Bekor qilish
+              {t("Bekor qilish")}
             </Button>
             <Button type="submit" disabled={mut.isPending}>
               {mut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Saqlash
+              {t("Saqlash")}
             </Button>
           </DialogFooter>
         </form>
@@ -877,7 +796,7 @@ function EditLessonDialog({
 }
 
 // ---------------------------------------------------------------------------
-// Block form dialog (create + edit)
+// Block form dialog
 // ---------------------------------------------------------------------------
 
 const blockSchema = z.object({
@@ -888,7 +807,6 @@ const blockSchema = z.object({
     .union([z.number().int().nonnegative(), z.nan(), z.literal("")])
     .optional(),
   sequenceOrder: z.number().int().positive(),
-  isFree: z.boolean(),
 });
 type BlockFormValues = z.infer<typeof blockSchema>;
 
@@ -896,7 +814,7 @@ function BlockFormDialog({
   open,
   onOpenChange,
   mode,
-  lessonId,
+  masterclassId,
   nextSequence,
   block,
   initialType,
@@ -904,30 +822,30 @@ function BlockFormDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   mode: "create" | "edit";
-  lessonId: number;
+  masterclassId: number;
   nextSequence: number;
-  block?: LessonBlock;
+  block?: MasterclassBlock;
   initialType?: BlockType;
 }) {
+  const { t } = useT();
   const qc = useQueryClient();
 
-  const defaults: BlockFormValues = mode === "edit" && block
-    ? {
-        blockType: block.blockType,
-        contentUz: block.contentUz,
-        contentRu: block.contentRu,
-        duration: block.duration ?? "",
-        sequenceOrder: block.sequenceOrder,
-        isFree: block.isFree ?? false,
-      }
-    : {
-        blockType: initialType ?? "TEXT",
-        contentUz: "",
-        contentRu: "",
-        duration: "",
-        sequenceOrder: nextSequence,
-        isFree: false,
-      };
+  const defaults: BlockFormValues =
+    mode === "edit" && block
+      ? {
+          blockType: block.blockType,
+          contentUz: block.contentUz,
+          contentRu: block.contentRu,
+          duration: block.duration ?? "",
+          sequenceOrder: block.sequenceOrder,
+        }
+      : {
+          blockType: initialType ?? "TEXT",
+          contentUz: "",
+          contentRu: "",
+          duration: "",
+          sequenceOrder: nextSequence,
+        };
 
   const form = useForm<BlockFormValues>({
     resolver: zodResolver(blockSchema),
@@ -946,50 +864,45 @@ function BlockFormDialog({
   const fileRefUz = useRef<HTMLInputElement>(null);
   const fileRefRu = useRef<HTMLInputElement>(null);
 
-  // Bilingual media toggle — default off; on when editing a block whose
-  // UZ/RU URLs already differ.
   const [bilingualMedia, setBilingualMedia] = useState<boolean>(
     mode === "edit" && !!block && block.contentUz !== block.contentRu
   );
 
   const createMut = useMutation({
-    mutationFn: (body: CreateBlockDto) => lessonsApi.addBlock(lessonId, body),
+    mutationFn: (body: CreateMasterclassBlockDto) =>
+      masterclassesApi.addBlock(masterclassId, body),
     onSuccess: () => {
-      toast.success("Blok qo'shildi");
-      qc.invalidateQueries({ queryKey: ["lesson", lessonId] });
+      toast.success(t("Qo'shildi"));
+      qc.invalidateQueries({ queryKey: ["masterclass", masterclassId] });
       onOpenChange(false);
     },
     onError: (e) => toast.error(apiErrorMessage(e)),
   });
 
   const updateMut = useMutation({
-    mutationFn: (body: UpdateBlockDto) =>
-      lessonsApi.updateBlock(block!.id, body),
+    mutationFn: (body: UpdateMasterclassBlockDto) =>
+      masterclassesApi.updateBlock(block!.id, body),
     onSuccess: () => {
-      toast.success("Blok yangilandi");
-      qc.invalidateQueries({ queryKey: ["lesson", lessonId] });
+      toast.success(t("Yangilandi"));
+      qc.invalidateQueries({ queryKey: ["masterclass", masterclassId] });
       onOpenChange(false);
     },
     onError: (e) => toast.error(apiErrorMessage(e)),
   });
 
   const uploading = uploadingTarget !== null;
-  const pending =
-    createMut.isPending || updateMut.isPending || uploading;
+  const pending = createMut.isPending || updateMut.isPending || uploading;
 
   const onSubmit = form.handleSubmit((values) => {
     const d = values.duration;
-    const duration =
-      d === "" || d == null || (typeof d === "number" && Number.isNaN(d))
-        ? null
-        : Number(d);
-    const payload: CreateBlockDto = {
+    const hasDuration =
+      d !== "" && d != null && !(typeof d === "number" && Number.isNaN(d));
+    const payload: CreateMasterclassBlockDto = {
       blockType: values.blockType,
       contentUz: values.contentUz,
       contentRu: values.contentRu,
       sequenceOrder: values.sequenceOrder,
-      isFree: values.isFree,
-      ...(duration != null ? { duration } : {}),
+      ...(hasDuration ? { duration: Number(d) } : {}),
     };
     if (mode === "create") createMut.mutate(payload);
     else updateMut.mutate(payload);
@@ -1008,7 +921,7 @@ function BlockFormDialog({
         form.setValue("contentUz", res.url, { shouldValidate: true });
       if (target === "ru" || target === "both")
         form.setValue("contentRu", res.url, { shouldValidate: true });
-      toast.success("Fayl yuklandi");
+      toast.success(t("Yuklandi"));
     } catch (e) {
       toast.error(apiErrorMessage(e));
     } finally {
@@ -1020,8 +933,6 @@ function BlockFormDialog({
     }
   };
 
-  // When user flips back to single-language mode, mirror UZ → RU so the
-  // hidden field stays in sync and the form submits a coherent payload.
   const toggleBilingualMedia = (next: boolean) => {
     setBilingualMedia(next);
     if (!next) {
@@ -1035,16 +946,16 @@ function BlockFormDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {mode === "create" ? "Yangi blok" : "Blokni tahrirlash"}
+            {t(mode === "create" ? "Yangi blok" : "Blokni tahrirlash")}
           </DialogTitle>
           <DialogDescription>
-            {meta.label} turidagi blok kontentini kiriting.
+            {t(meta.label)} {t("turidagi blok kontentini kiriting.")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
-              <Label>Blok turi</Label>
+              <Label>{t("Blok turi")}</Label>
               <Select
                 value={blockType}
                 onValueChange={(v) =>
@@ -1058,53 +969,30 @@ function BlockFormDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {BLOCK_TYPES.map((t) => (
-                    <SelectItem key={t} value={t}>
-                      {BLOCK_META[t].label}
+                  {BLOCK_TYPES.map((bt) => (
+                    <SelectItem key={bt} value={bt}>
+                      {t(BLOCK_META[bt].label)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="sequenceOrder">Tartib raqami</Label>
+              <Label htmlFor="sequenceOrder">{t("Tartib raqami")}</Label>
               <Input
                 id="sequenceOrder"
                 type="number"
                 min={1}
                 {...form.register("sequenceOrder", { valueAsNumber: true })}
               />
-              {form.formState.errors.sequenceOrder && (
-                <p className="text-xs text-[var(--destructive)]">
-                  {form.formState.errors.sequenceOrder.message}
-                </p>
-              )}
             </div>
-          </div>
-
-          <div className="flex items-start justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 p-3">
-            <div className="flex flex-col">
-              <Label htmlFor="block-is-free" className="cursor-pointer">
-                Bepul blok
-              </Label>
-              <p className="text-xs text-[var(--muted-foreground)]">
-                Yoqilganda blok obunasiz foydalanuvchiga ochiq bo&apos;ladi.
-              </p>
-            </div>
-            <Switch
-              id="block-is-free"
-              checked={form.watch("isFree")}
-              onCheckedChange={(v) =>
-                form.setValue("isFree", v, { shouldDirty: true })
-              }
-            />
           </div>
 
           {media && meta.folder ? (
             <div className="flex flex-col gap-3 rounded-md border border-dashed border-[var(--border)] p-3">
               <div className="flex items-center justify-between gap-3">
                 <Label className="text-xs uppercase text-[var(--muted-foreground)]">
-                  Fayl yuklash ({meta.folder})
+                  {t("Fayl yuklash")} ({meta.folder})
                 </Label>
                 <div className="flex items-center gap-2">
                   <Label
@@ -1122,7 +1010,6 @@ function BlockFormDialog({
               </div>
 
               {!bilingualMedia ? (
-                // --- Single-language mode --------------------------------
                 <div className="flex flex-col gap-2">
                   <input
                     ref={fileRefBoth}
@@ -1146,7 +1033,7 @@ function BlockFormDialog({
                       ) : (
                         <Upload className="h-4 w-4" />
                       )}
-                      Fayl tanlash
+                      {t("Fayl tanlash")}
                     </Button>
                     {uploadingTarget === "both" && uploadPercent != null && (
                       <div className="flex-1">
@@ -1176,17 +1063,8 @@ function BlockFormDialog({
                         }),
                     })}
                   />
-                  {form.formState.errors.contentUz && (
-                    <p className="text-xs text-[var(--destructive)]">
-                      {form.formState.errors.contentUz.message}
-                    </p>
-                  )}
-                  <p className="text-[11px] text-[var(--muted-foreground)]">
-                    Bitta fayl ikkala tilga ham biriktiriladi.
-                  </p>
                 </div>
               ) : (
-                // --- Bilingual mode: separate uploads per language --------
                 <div className="grid gap-4 sm:grid-cols-2">
                   {(
                     [
@@ -1231,34 +1109,20 @@ function BlockFormDialog({
                           ) : (
                             <Upload className="h-3.5 w-3.5" />
                           )}
-                          Yuklash
+                          {t("Yuklash")}
                         </Button>
                       </div>
                       <Input id={field} {...form.register(field)} />
-                      {uploadingTarget === lang && uploadPercent != null && (
-                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--muted)]">
-                          <div
-                            className="h-full rounded-full bg-[var(--primary)] transition-all"
-                            style={{ width: `${uploadPercent}%` }}
-                          />
-                        </div>
-                      )}
-                      {form.formState.errors[field] && (
-                        <p className="text-xs text-[var(--destructive)]">
-                          {form.formState.errors[field]?.message}
-                        </p>
-                      )}
                     </div>
                   ))}
                 </div>
               )}
             </div>
           ) : (
-            // --- Non-media block: bilingual text content ------------------
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
-                  <Label htmlFor="contentUz">Kontent (UZ)</Label>
+                  <Label htmlFor="contentUz">{t("Kontent (UZ)")}</Label>
                   <TranslateButton
                     direction="ru-uz"
                     source={form.watch("contentRu")}
@@ -1272,17 +1136,11 @@ function BlockFormDialog({
                   rows={5}
                   {...form.register("contentUz")}
                 />
-                {form.formState.errors.contentUz && (
-                  <p className="text-xs text-[var(--destructive)]">
-                    {form.formState.errors.contentUz.message}
-                  </p>
-                )}
               </div>
               <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
-                  <Label htmlFor="contentRu">Kontent (RU)</Label>
+                  <Label htmlFor="contentRu">{t("Kontent (RU)")}</Label>
                   <TranslateButton
-                    direction="uz-ru"
                     source={form.watch("contentUz")}
                     onTranslated={(ru) =>
                       form.setValue("contentRu", ru, { shouldDirty: true })
@@ -1294,23 +1152,19 @@ function BlockFormDialog({
                   rows={5}
                   {...form.register("contentRu")}
                 />
-                {form.formState.errors.contentRu && (
-                  <p className="text-xs text-[var(--destructive)]">
-                    {form.formState.errors.contentRu.message}
-                  </p>
-                )}
               </div>
             </div>
           )}
 
           {blockType === "VIDEO" && (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="duration">Davomiyligi (soniya, ixtiyoriy)</Label>
+              <Label htmlFor="duration">
+                {t("Davomiyligi (soniya, ixtiyoriy)")}
+              </Label>
               <Input
                 id="duration"
                 type="number"
                 min={0}
-                placeholder="masalan 120"
                 {...form.register("duration", { valueAsNumber: true })}
               />
             </div>
@@ -1322,11 +1176,11 @@ function BlockFormDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Bekor qilish
+              {t("Bekor qilish")}
             </Button>
             <Button type="submit" disabled={pending}>
               {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-              {mode === "create" ? "Qo'shish" : "Saqlash"}
+              {t(mode === "create" ? "Qo'shish" : "Saqlash")}
             </Button>
           </DialogFooter>
         </form>
@@ -1336,27 +1190,27 @@ function BlockFormDialog({
 }
 
 // ---------------------------------------------------------------------------
-// Lesson preview dialog (user-facing mobile-app simulation)
+// Masterclass preview dialog (user-facing mobile / web simulation)
 // ---------------------------------------------------------------------------
 
 type PreviewDevice = "mobile" | "desktop";
 
-function LessonPreviewDialog({
+function MasterclassPreviewDialog({
   device,
   onClose,
-  lesson,
+  masterclass,
   blocks,
   categoryName,
 }: {
   device: PreviewDevice | null;
   onClose: () => void;
-  lesson: LessonDetail;
-  blocks: LessonBlock[];
+  masterclass: MasterclassDetail;
+  blocks: MasterclassBlock[];
   categoryName?: string;
 }) {
   const bi = useBiLang();
-  const title = bi.primary(lesson.titleUz, lesson.titleRu);
-  const subtitle = bi.secondary(lesson.titleUz, lesson.titleRu);
+  const title = bi.primary(masterclass.titleUz, masterclass.titleRu);
+  const subtitle = bi.secondary(masterclass.titleUz, masterclass.titleRu);
 
   if (device === null) return null;
   const isMobile = device === "mobile";
@@ -1376,16 +1230,15 @@ function LessonPreviewDialog({
           <DialogDescription>{subtitle}</DialogDescription>
         </DialogHeader>
 
-        {/* Frame */}
         {isMobile ? (
-          <MobileFrame
+          <MasterclassMobileFrame
             title={title}
             subtitle={subtitle}
             categoryName={categoryName}
             blocks={blocks}
           />
         ) : (
-          <DesktopFrame
+          <MasterclassDesktopFrame
             title={title}
             subtitle={subtitle}
             categoryName={categoryName}
@@ -1397,7 +1250,7 @@ function LessonPreviewDialog({
   );
 }
 
-function MobileFrame({
+function MasterclassMobileFrame({
   title,
   subtitle,
   categoryName,
@@ -1406,17 +1259,16 @@ function MobileFrame({
   title: string;
   subtitle: string;
   categoryName?: string;
-  blocks: LessonBlock[];
+  blocks: MasterclassBlock[];
 }) {
+  const { t } = useT();
   return (
     <div className="relative flex w-full min-w-0 max-h-[80vh] flex-col overflow-hidden bg-[var(--background)]">
-      {/* Simulated status bar */}
       <div className="flex items-center justify-between bg-[var(--muted)]/40 px-4 py-2 text-[11px] text-[var(--muted-foreground)]">
         <span>9:41</span>
         <span>●●● 100%</span>
       </div>
 
-      {/* App header */}
       <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--card)] px-4 py-3">
         <ArrowLeft className="h-4 w-4 text-[var(--muted-foreground)]" />
         <div className="flex min-w-0 flex-1 flex-col leading-tight">
@@ -1432,6 +1284,9 @@ function MobileFrame({
       <div className="min-w-0 flex-1 overflow-y-auto scrollbar-thin">
         <div className="flex min-w-0 flex-col gap-4 px-4 py-5">
           <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-medium uppercase tracking-wider text-[var(--primary)]">
+              {t("Masterklass")}
+            </span>
             <h2 className="text-xl font-semibold tracking-tight break-words">
               {title}
             </h2>
@@ -1442,10 +1297,10 @@ function MobileFrame({
           {blocks.length === 0 ? (
             <p className="text-sm text-[var(--muted-foreground)]">—</p>
           ) : (
-            blocks.map((b) => <PreviewBlock key={b.id} block={b} />)
+            blocks.map((b) => <MasterclassPreviewBlock key={b.id} block={b} />)
           )}
           <Button className="mt-4 w-full" size="lg" disabled>
-            Keyingi dars
+            {t("Keyingi masterklass")}
           </Button>
         </div>
       </div>
@@ -1453,7 +1308,7 @@ function MobileFrame({
   );
 }
 
-function DesktopFrame({
+function MasterclassDesktopFrame({
   title,
   subtitle,
   categoryName,
@@ -1462,11 +1317,11 @@ function DesktopFrame({
   title: string;
   subtitle: string;
   categoryName?: string;
-  blocks: LessonBlock[];
+  blocks: MasterclassBlock[];
 }) {
+  const { t } = useT();
   return (
     <div className="flex w-full min-w-0 max-h-[82vh] flex-col overflow-hidden bg-[var(--background)]">
-      {/* Fake browser chrome */}
       <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--muted)]/30 px-4 py-2">
         <div className="flex gap-1.5">
           <span className="h-2.5 w-2.5 rounded-full bg-[oklch(0.7_0.2_25)]" />
@@ -1474,11 +1329,10 @@ function DesktopFrame({
           <span className="h-2.5 w-2.5 rounded-full bg-[oklch(0.72_0.19_145)]" />
         </div>
         <div className="flex-1 truncate rounded-md bg-[var(--background)] px-3 py-1 text-[11px] text-[var(--muted-foreground)]">
-          https://football-coach.uz/lessons/{title}
+          https://football-coach.uz/masterclasses/{title}
         </div>
       </div>
 
-      {/* Top nav */}
       <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--card)] px-8 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[var(--primary)] text-[var(--primary-foreground)]">
@@ -1487,26 +1341,22 @@ function DesktopFrame({
           Football Coach
         </div>
         <div className="flex items-center gap-5 text-xs text-[var(--muted-foreground)]">
-          <span>Darslar</span>
-          <span>Kitoblar</span>
-          <span>Tariflar</span>
+          <span>{t("Darslar")}</span>
+          <span>{t("Masterklasslar")}</span>
+          <span>{t("Kitoblar")}</span>
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--primary)]/10 text-[var(--primary)]">
             U
           </span>
         </div>
       </div>
 
-      {/* Body */}
       <div className="min-w-0 flex-1 overflow-y-auto scrollbar-thin">
         <div className="mx-auto grid max-w-5xl min-w-0 gap-8 px-8 py-10 lg:grid-cols-[minmax(0,1fr)_280px]">
-          {/* Main */}
           <div className="flex min-w-0 flex-col gap-6">
             <div className="flex flex-col gap-2">
-              {categoryName && (
-                <span className="text-xs font-medium uppercase tracking-wider text-[var(--primary)]">
-                  {categoryName}
-                </span>
-              )}
+              <span className="text-xs font-medium uppercase tracking-wider text-[var(--primary)]">
+                {categoryName ?? t("Masterklass")}
+              </span>
               <h1 className="text-3xl font-bold tracking-tight break-words">
                 {title}
               </h1>
@@ -1519,25 +1369,24 @@ function DesktopFrame({
             ) : (
               <div className="flex flex-col gap-5">
                 {blocks.map((b) => (
-                  <PreviewBlock key={b.id} block={b} />
+                  <MasterclassPreviewBlock key={b.id} block={b} />
                 ))}
               </div>
             )}
           </div>
 
-          {/* Sidebar */}
           <aside className="hidden h-fit flex-col gap-3 rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 lg:flex">
-            <h4 className="text-sm font-semibold">Dars haqida</h4>
+            <h4 className="text-sm font-semibold">{t("Masterklass haqida")}</h4>
             <div className="flex flex-col gap-2 text-xs text-[var(--muted-foreground)]">
               <div className="flex justify-between">
-                <span>Bloklar</span>
+                <span>{t("Bloklar")}</span>
                 <span className="font-medium text-[var(--foreground)]">
                   {blocks.length}
                 </span>
               </div>
               {categoryName && (
                 <div className="flex justify-between">
-                  <span>Toifa</span>
+                  <span>{t("Toifa")}</span>
                   <span className="font-medium text-[var(--foreground)]">
                     {categoryName}
                   </span>
@@ -1545,7 +1394,7 @@ function DesktopFrame({
               )}
             </div>
             <Button className="mt-2 w-full" disabled>
-              Keyingi dars
+              {t("Keyingi masterklass")}
             </Button>
           </aside>
         </div>
@@ -1554,7 +1403,7 @@ function DesktopFrame({
   );
 }
 
-function PreviewBlock({ block }: { block: LessonBlock }) {
+function MasterclassPreviewBlock({ block }: { block: MasterclassBlock }) {
   const bi = useBiLang();
   const text = bi.primary(block.contentUz, block.contentRu);
 
@@ -1576,7 +1425,7 @@ function PreviewBlock({ block }: { block: LessonBlock }) {
       if (!url)
         return (
           <div className="flex aspect-video items-center justify-center rounded-lg bg-[var(--muted)] text-xs text-[var(--muted-foreground)]">
-            Video URL kiritilmagan
+            Video URL —
           </div>
         );
       return (
@@ -1601,7 +1450,7 @@ function PreviewBlock({ block }: { block: LessonBlock }) {
       if (!url)
         return (
           <div className="flex aspect-video items-center justify-center rounded-lg bg-[var(--muted)] text-xs text-[var(--muted-foreground)]">
-            Rasm URL kiritilmagan
+            —
           </div>
         );
       return (

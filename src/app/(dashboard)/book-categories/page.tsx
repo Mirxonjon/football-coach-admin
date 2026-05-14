@@ -1,11 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { Library, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { Library, Loader2, Pencil, Plus, Search, Trash2, X } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -50,6 +50,7 @@ import type { BookCategory, BookCategoryType } from "@/lib/api-types";
 import { apiErrorMessage } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { TranslateButton } from "@/components/translate-button";
+import { useBiLang, useT } from "@/lib/i18n";
 
 const schema = z.object({
   titleUz: z.string().min(1, "Majburiy"),
@@ -110,7 +111,16 @@ function CategoryFormDialog({
         >
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="titleUz">Sarlavha (UZ)</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="titleUz">Sarlavha (UZ)</Label>
+                <TranslateButton
+                  direction="ru-uz"
+                  source={form.watch("titleRu")}
+                  onTranslated={(uz) =>
+                    form.setValue("titleUz", uz, { shouldDirty: true })
+                  }
+                />
+              </div>
               <Input id="titleUz" {...form.register("titleUz")} />
               {form.formState.errors.titleUz && (
                 <p className="text-xs text-[var(--destructive)]">
@@ -188,6 +198,8 @@ function DeleteDialog({
   onOpenChange: (v: boolean) => void;
 }) {
   const qc = useQueryClient();
+  const { t } = useT();
+  const bi = useBiLang();
   const mutation = useMutation({
     mutationFn: () => {
       if (!category) throw new Error("No category");
@@ -205,9 +217,9 @@ function DeleteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Toifani o&apos;chirish</DialogTitle>
+          <DialogTitle>{t("Toifani o'chirish")}</DialogTitle>
           <DialogDescription>
-            {category?.titleUz} — bu amalni bekor qilib bo&apos;lmaydi.
+            {bi.primary(category?.titleUz, category?.titleRu)} — {t("Bu amalni bekor qilib bo'lmaydi.")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2">
@@ -228,42 +240,107 @@ function DeleteDialog({
   );
 }
 
+const TYPE_ALL = "__all__";
+
 export default function BookCategoriesPage() {
+  const { t } = useT();
+  const bi = useBiLang();
   const [editing, setEditing] = useState<BookCategory | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<BookCategory | null>(null);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>(TYPE_ALL);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const categoryType =
+    typeFilter === TYPE_ALL ? undefined : (typeFilter as BookCategoryType);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["book-categories"],
-    queryFn: () => bookCategoriesApi.list(),
+    queryKey: ["book-categories", { search: debouncedSearch, categoryType }],
+    queryFn: () =>
+      bookCategoriesApi.list({
+        search: debouncedSearch || undefined,
+        categoryType,
+      }),
   });
 
   const items = data ?? [];
+  const hasFilters = debouncedSearch.length > 0 || categoryType !== undefined;
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Kitob toifalari
+            {t("Kitob toifalari")}
           </h1>
           <p className="text-sm text-[var(--muted-foreground)]">
-            Kitob va konspekt toifalarini boshqarish
+            {t("Kitob va konspekt toifalarini boshqarish")}
           </p>
         </div>
         <Button onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4" /> Yangi toifa
+          <Plus className="h-4 w-4" /> {t("Yangi toifa")}
         </Button>
       </div>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Hammasi {items.length ? `(${items.length})` : ""}
-          </CardTitle>
-          <CardDescription>
-            Toifani tahrirlash yoki o&apos;chirish
-          </CardDescription>
+        <CardHeader className="gap-4">
+          <div className="flex flex-col gap-1">
+            <CardTitle className="text-base">
+              {t("Hammasi")} {items.length ? `(${items.length})` : ""}
+            </CardTitle>
+            <CardDescription>
+              {t("Toifani tahrirlash yoki o'chirish")}
+            </CardDescription>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("Sarlavha bo'yicha izlash...")}
+                className="pl-9 pr-9"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  aria-label="Tozalash"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="sm:w-48">
+                <SelectValue placeholder={t("Barcha turlar")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={TYPE_ALL}>{t("Barcha turlar")}</SelectItem>
+                <SelectItem value="BOOK">{t("Kitob")}</SelectItem>
+                <SelectItem value="KONSPEKT">{t("Konspekt")}</SelectItem>
+              </SelectContent>
+            </Select>
+            {hasFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearch("");
+                  setTypeFilter(TYPE_ALL);
+                }}
+              >
+                {t("Tozalash")}
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -275,12 +352,28 @@ export default function BookCategoriesPage() {
           ) : items.length === 0 ? (
             <EmptyState
               icon={Library}
-              title="Toifalar mavjud emas"
-              description="Birinchi kitob toifasini qo'shing"
+              title={t(hasFilters ? "Topilmadi" : "Toifalar mavjud emas")}
+              description={
+                hasFilters
+                  ? t("Filtrlarga mos toifa topilmadi. Filtrlarni tozalab ko'ring.")
+                  : t("Birinchi kitob toifasini qo'shing")
+              }
               action={
-                <Button onClick={() => setCreating(true)}>
-                  <Plus className="h-4 w-4" /> Yangi toifa
-                </Button>
+                hasFilters ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSearch("");
+                      setTypeFilter(TYPE_ALL);
+                    }}
+                  >
+                    {t("Filtrlarni tozalash")}
+                  </Button>
+                ) : (
+                  <Button onClick={() => setCreating(true)}>
+                    <Plus className="h-4 w-4" /> {t("Yangi toifa")}
+                  </Button>
+                )
               }
             />
           ) : (
@@ -288,11 +381,11 @@ export default function BookCategoriesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-16">ID</TableHead>
-                  <TableHead>Sarlavha (UZ)</TableHead>
-                  <TableHead>Sarlavha (RU)</TableHead>
-                  <TableHead>Tur</TableHead>
-                  <TableHead>Yaratilgan</TableHead>
-                  <TableHead className="text-right">Amallar</TableHead>
+                  <TableHead>{t("Sarlavha (UZ)")}</TableHead>
+                  <TableHead>{t("Sarlavha (RU)")}</TableHead>
+                  <TableHead>{t("Tur")}</TableHead>
+                  <TableHead>{t("Yaratilgan")}</TableHead>
+                  <TableHead className="text-right">{t("Amallar")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -301,8 +394,22 @@ export default function BookCategoriesPage() {
                     <TableCell className="text-[var(--muted-foreground)]">
                       {c.id}
                     </TableCell>
-                    <TableCell className="font-medium">{c.titleUz}</TableCell>
-                    <TableCell className="text-[var(--muted-foreground)]">
+                    <TableCell
+                      className={
+                        bi.locale === "uz"
+                          ? "font-semibold text-[var(--foreground)]"
+                          : "text-[var(--muted-foreground)]"
+                      }
+                    >
+                      {c.titleUz}
+                    </TableCell>
+                    <TableCell
+                      className={
+                        bi.locale === "ru"
+                          ? "font-semibold text-[var(--foreground)]"
+                          : "text-[var(--muted-foreground)]"
+                      }
+                    >
                       {c.titleRu}
                     </TableCell>
                     <TableCell>
@@ -311,7 +418,7 @@ export default function BookCategoriesPage() {
                           c.categoryType === "BOOK" ? "default" : "secondary"
                         }
                       >
-                        {c.categoryType === "BOOK" ? "Kitob" : "Konspekt"}
+                        {t(c.categoryType === "BOOK" ? "Kitob" : "Konspekt")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-[var(--muted-foreground)]">

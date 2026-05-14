@@ -4,6 +4,18 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { Toaster } from "sonner";
 import { useState, useEffect } from "react";
 import { makeQueryClient } from "@/lib/query";
+import { useSyncHtmlLang } from "@/lib/i18n";
+import { useSyncTheme } from "@/stores/theme.store";
+
+function LangSync() {
+  useSyncHtmlLang();
+  return null;
+}
+
+function ThemeSync() {
+  useSyncTheme();
+  return null;
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [client] = useState(() => makeQueryClient());
@@ -12,6 +24,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={client}>
+      <LangSync />
+      <ThemeSync />
       {children}
       <Toaster richColors position="top-right" />
       {mounted && process.env.NODE_ENV === "development" && (

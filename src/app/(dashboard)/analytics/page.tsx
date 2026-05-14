@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/table";
 import { statsApi } from "@/features/stats/stats.api";
 import { formatCurrency, formatNumber, cn } from "@/lib/utils";
+import { useBiLang, useT } from "@/lib/i18n";
 import type {
   NotificationType,
   RevenuePoint,
@@ -87,17 +88,17 @@ function daysAgo(n: number) {
   return d;
 }
 
-const PRESETS: { label: string; days: number }[] = [
-  { label: "7 kun", days: 7 },
-  { label: "30 kun", days: 30 },
-  { label: "90 kun", days: 90 },
+const PRESETS: { key: string; days: number }[] = [
+  { key: "Oxirgi 7 kun", days: 7 },
+  { key: "Oxirgi 30 kun", days: 30 },
+  { key: "Oxirgi 90 kun", days: 90 },
 ];
 
 // ----------------------------------------------------------------------------
-// Notification type labels
+// Notification type labels (keys — translated at render time)
 // ----------------------------------------------------------------------------
 
-const NOTIF_LABELS: Record<NotificationType, string> = {
+const NOTIF_LABEL_KEYS: Record<NotificationType, string> = {
   SYSTEM: "Tizim",
   LESSON: "Darslar",
   BOOK: "Kitoblar",
@@ -121,6 +122,8 @@ const tooltipStyle = {
 // ----------------------------------------------------------------------------
 
 export default function AnalyticsPage() {
+  const { t } = useT();
+  const bi = useBiLang();
   const [from, setFrom] = useState<string>(toDateInput(daysAgo(30)));
   const [to, setTo] = useState<string>(toDateInput(new Date()));
 
@@ -168,9 +171,9 @@ export default function AnalyticsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Analitika</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Analitika")}</h1>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Platformaning chuqur ko&apos;rsatkichlari va taqsimotlar
+          {t("Platformaning chuqur ko'rsatkichlari va taqsimotlar")}
         </p>
       </div>
 
@@ -181,7 +184,7 @@ export default function AnalyticsPage() {
             <div className="flex flex-col gap-1.5">
               <Label className="flex items-center gap-1.5 text-xs">
                 <Calendar className="h-3 w-3" />
-                Dan
+                {t("Dan")}
               </Label>
               <Input
                 type="date"
@@ -194,7 +197,7 @@ export default function AnalyticsPage() {
             <div className="flex flex-col gap-1.5">
               <Label className="flex items-center gap-1.5 text-xs">
                 <Calendar className="h-3 w-3" />
-                Gacha
+                {t("Gacha")}
               </Label>
               <Input
                 type="date"
@@ -214,7 +217,7 @@ export default function AnalyticsPage() {
                 size="sm"
                 onClick={() => applyPreset(p.days)}
               >
-                Oxirgi {p.label}
+                {t(p.key)}
               </Button>
             ))}
           </div>
@@ -227,7 +230,7 @@ export default function AnalyticsPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <Wallet className="h-4 w-4 text-[var(--primary)]" />
-              Daromad trendi
+              {t("Daromad trendi")}
             </CardTitle>
             <RevenueBadges points={revenueQ.data} />
           </div>
@@ -252,16 +255,16 @@ export default function AnalyticsPage() {
                   contentStyle={tooltipStyle}
                   formatter={(value, name) => {
                     const n = Number(value);
-                    return name === "total"
-                      ? [formatCurrency(n), "Daromad"]
-                      : [formatNumber(n), "Tolovlar soni"];
+                    return name === t("Daromad")
+                      ? [formatCurrency(n), t("Daromad")]
+                      : [formatNumber(n), t("Tolovlar soni")];
                   }}
                 />
                 <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Line
                   type="monotone"
                   dataKey="total"
-                  name="Daromad"
+                  name={t("Daromad")}
                   stroke="var(--primary)"
                   strokeWidth={2}
                   dot={{ r: 3 }}
@@ -269,7 +272,7 @@ export default function AnalyticsPage() {
                 <Line
                   type="monotone"
                   dataKey="count"
-                  name="Tolovlar"
+                  name={t("Tolovlar")}
                   stroke="oklch(0.62 0.19 250)"
                   strokeWidth={1.5}
                   strokeDasharray="5 3"
@@ -280,8 +283,8 @@ export default function AnalyticsPage() {
           ) : (
             <EmptyState
               icon={Wallet}
-              title="Malumot yoq"
-              description="Tanlangan oraliqda daromad kirimi topilmadi"
+              title={t("Malumot yoq")}
+              description={t("Tanlangan oraliqda daromad kirimi topilmadi")}
             />
           )}
         </CardContent>
@@ -296,7 +299,7 @@ export default function AnalyticsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <GraduationCap className="h-4 w-4 text-[var(--primary)]" />
-              Top darslar (20 ta)
+              {t("Top darslar (20 ta)")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -311,9 +314,9 @@ export default function AnalyticsPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-10">#</TableHead>
-                    <TableHead>Dars</TableHead>
-                    <TableHead>Kategoriya</TableHead>
-                    <TableHead className="w-56">Yakunlanganlik</TableHead>
+                    <TableHead>{t("Dars")}</TableHead>
+                    <TableHead>{t("Kategoriya")}</TableHead>
+                    <TableHead className="w-56">{t("Yakunlanganlik")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -330,15 +333,17 @@ export default function AnalyticsPage() {
                           {i + 1}
                         </TableCell>
                         <TableCell>
-                          <p className="text-sm font-medium">{l.titleUz}</p>
+                          <p className="text-sm font-medium">
+                            {bi.primary(l.titleUz, l.titleRu)}
+                          </p>
                           <p className="text-xs text-[var(--muted-foreground)]">
-                            {l.titleRu}
+                            {bi.secondary(l.titleUz, l.titleRu)}
                           </p>
                         </TableCell>
                         <TableCell>
                           {l.categoryTitleUz ? (
                             <Badge variant="outline">
-                              {l.categoryTitleUz}
+                              {bi.primary(l.categoryTitleUz, (l as any).categoryTitleRu ?? l.categoryTitleUz)}
                             </Badge>
                           ) : (
                             <span className="text-xs text-[var(--muted-foreground)]">
@@ -371,7 +376,7 @@ export default function AnalyticsPage() {
             ) : (
               <EmptyState
                 icon={GraduationCap}
-                title="Darslar bo'yicha malumot yo'q"
+                title={t("Darslar bo'yicha malumot yo'q")}
               />
             )}
           </CardContent>
@@ -381,7 +386,7 @@ export default function AnalyticsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <BookOpen className="h-4 w-4 text-[var(--primary)]" />
-              Top kitoblar (20 ta)
+              {t("Top kitoblar (20 ta)")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -396,7 +401,7 @@ export default function AnalyticsPage() {
             ) : (
               <EmptyState
                 icon={BookOpen}
-                title="Kitoblar bo'yicha malumot yo'q"
+                title={t("Kitoblar bo'yicha malumot yo'q")}
               />
             )}
           </CardContent>
@@ -410,15 +415,15 @@ export default function AnalyticsPage() {
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-base">
                 <Bell className="h-4 w-4 text-[var(--primary)]" />
-                Bildirishnomalar
+                {t("Bildirishnomalar")}
               </CardTitle>
               {notifsQ.data && (
                 <div className="flex flex-wrap gap-2">
                   <Badge variant="outline">
-                    Jami: {formatNumber(notifsQ.data.total)}
+                    {t("Jami")}: {formatNumber(notifsQ.data.total)}
                   </Badge>
                   <Badge variant="warning">
-                    O&apos;qilmagan: {formatNumber(notifsQ.data.unread)}
+                    {t("O'qilmagan")}: {formatNumber(notifsQ.data.unread)}
                   </Badge>
                 </div>
               )}
@@ -431,7 +436,7 @@ export default function AnalyticsPage() {
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart
                   data={notifsQ.data.byType.map((b) => ({
-                    type: NOTIF_LABELS[b.type] ?? b.type,
+                    type: t(NOTIF_LABEL_KEYS[b.type] ?? b.type),
                     oqilgan: Math.max(0, b.total - b.unread),
                     oqilmagan: b.unread,
                   }))}
@@ -456,14 +461,14 @@ export default function AnalyticsPage() {
                   <Bar
                     dataKey="oqilgan"
                     stackId="a"
-                    name="Oqilgan"
+                    name={t("Oqilgan")}
                     fill="var(--success)"
                     radius={[0, 0, 0, 0]}
                   />
                   <Bar
                     dataKey="oqilmagan"
                     stackId="a"
-                    name="Oqilmagan"
+                    name={t("Oqilmagan")}
                     fill="var(--warning)"
                     radius={[0, 4, 4, 0]}
                   />
@@ -472,7 +477,7 @@ export default function AnalyticsPage() {
             ) : (
               <EmptyState
                 icon={Bell}
-                title="Bildirishnomalar yoq"
+                title={t("Bildirishnomalar yoq")}
               />
             )}
           </CardContent>
@@ -482,7 +487,7 @@ export default function AnalyticsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <CreditCard className="h-4 w-4 text-[var(--primary)]" />
-              Tariflar bo&apos;yicha daromad
+              {t("Tariflar bo'yicha daromad")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -491,7 +496,7 @@ export default function AnalyticsPage() {
             ) : plansQ.data?.length ? (
               <PlansDonut
                 data={plansQ.data.map((p) => ({
-                  name: p.titleUz,
+                  name: bi.primary(p.titleUz, p.titleRu),
                   value: p.revenue,
                   active: p.activeCount,
                   total: p.totalCount,
@@ -500,7 +505,7 @@ export default function AnalyticsPage() {
             ) : (
               <EmptyState
                 icon={CreditCard}
-                title="Tarif malumoti yoq"
+                title={t("Tarif malumoti yoq")}
               />
             )}
           </CardContent>
@@ -512,7 +517,7 @@ export default function AnalyticsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <TrendingUp className="h-4 w-4 text-[var(--primary)]" />
-            Umumiy ko&apos;rsatkichlar
+            {t("Umumiy ko'rsatkichlar")}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -525,22 +530,22 @@ export default function AnalyticsPage() {
           ) : overview.data ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <MiniStat
-                label="Yangi (7 kun)"
+                label={t("Yangi (7 kun)")}
                 value={formatNumber(overview.data.users.newLast7d)}
                 color="var(--primary)"
               />
               <MiniStat
-                label="Yangi (30 kun)"
+                label={t("Yangi (30 kun)")}
                 value={formatNumber(overview.data.users.newLast30d)}
                 color="oklch(0.62 0.19 250)"
               />
               <MiniStat
-                label="Daromad (7 kun)"
+                label={t("Daromad (7 kun)")}
                 value={formatCurrency(overview.data.revenue.last7d)}
                 color="var(--success)"
               />
               <MiniStat
-                label="Kutilayotgan"
+                label={t("Kutilayotgan")}
                 value={formatCurrency(overview.data.revenue.pendingAmount)}
                 color="var(--warning)"
               />
@@ -557,6 +562,7 @@ export default function AnalyticsPage() {
 // ----------------------------------------------------------------------------
 
 function RevenueBadges({ points }: { points?: RevenuePoint[] }) {
+  const { t } = useT();
   const stats = useMemo(() => {
     if (!points || points.length === 0)
       return { total: 0, avg: 0, count: 0, days: 0 };
@@ -574,13 +580,13 @@ function RevenueBadges({ points }: { points?: RevenuePoint[] }) {
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       <Badge variant="outline">
-        Jami: {formatCurrency(stats.total)}
+        {t("Jami")}: {formatCurrency(stats.total)}
       </Badge>
       <Badge variant="outline">
-        Kunlik o&apos;rtacha: {formatCurrency(Math.round(stats.avg))}
+        {t("Kunlik o'rtacha")}: {formatCurrency(Math.round(stats.avg))}
       </Badge>
       <Badge variant="outline">
-        Tolovlar: {formatNumber(stats.count)}
+        {t("Tolovlar")}: {formatNumber(stats.count)}
       </Badge>
     </div>
   );
@@ -597,6 +603,7 @@ function UsersGrowthSection({
   points: UsersGrowthPoint[] | undefined;
   loading: boolean;
 }) {
+  const { t } = useT();
   const [cumulative, setCumulative] = useState(false);
 
   const data = useMemo(() => {
@@ -620,12 +627,12 @@ function UsersGrowthSection({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Users className="h-4 w-4 text-[var(--primary)]" />
-            Foydalanuvchilar o&apos;sishi
+            {t("Foydalanuvchilar o'sishi")}
           </CardTitle>
           <div className="flex items-center gap-3">
             <Badge variant="outline" className="gap-1">
               <ArrowUpRight className="h-3 w-3" />
-              Jami: {formatNumber(total)}
+              {t("Jami")}: {formatNumber(total)}
             </Badge>
             <div className="flex items-center gap-1 rounded-md border border-[var(--border)] p-0.5">
               <button
@@ -638,7 +645,7 @@ function UsersGrowthSection({
                     : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                 )}
               >
-                Kunlik
+                {t("Kunlik")}
               </button>
               <button
                 type="button"
@@ -650,7 +657,7 @@ function UsersGrowthSection({
                     : "text-[var(--muted-foreground)] hover:text-[var(--foreground)]"
                 )}
               >
-                Kumulyativ
+                {t("Kumulyativ")}
               </button>
             </div>
           </div>
@@ -677,7 +684,7 @@ function UsersGrowthSection({
                 <Line
                   type="monotone"
                   dataKey="count"
-                  name="Kumulyativ"
+                  name={t("Kumulyativ")}
                   stroke="var(--primary)"
                   strokeWidth={2}
                   dot={{ r: 3 }}
@@ -698,7 +705,7 @@ function UsersGrowthSection({
                 <Tooltip contentStyle={tooltipStyle} />
                 <Bar
                   dataKey="count"
-                  name="Yangi"
+                  name={t("Yangi")}
                   fill="var(--primary)"
                   radius={[4, 4, 0, 0]}
                 />
@@ -708,7 +715,7 @@ function UsersGrowthSection({
         ) : (
           <EmptyState
             icon={Users}
-            title="Tanlangan oraliqda malumot yo'q"
+            title={t("Tanlangan oraliqda malumot yo'q")}
           />
         )}
       </CardContent>
@@ -725,14 +732,16 @@ function TopBooksList({
 }: {
   data: { bookId: number; titleUz: string; titleRu: string; purchaseCount: number }[];
 }) {
+  const { t } = useT();
+  const bi = useBiLang();
   const max = Math.max(1, ...data.map((b) => b.purchaseCount));
   return (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead className="w-10">#</TableHead>
-          <TableHead>Kitob</TableHead>
-          <TableHead className="w-64">Sotuvlar</TableHead>
+          <TableHead>{t("Kitob")}</TableHead>
+          <TableHead className="w-64">{t("Sotuvlar")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -744,9 +753,11 @@ function TopBooksList({
                 {i + 1}
               </TableCell>
               <TableCell>
-                <p className="text-sm font-medium">{b.titleUz}</p>
+                <p className="text-sm font-medium">
+                  {bi.primary(b.titleUz, b.titleRu)}
+                </p>
                 <p className="text-xs text-[var(--muted-foreground)]">
-                  {b.titleRu}
+                  {bi.secondary(b.titleUz, b.titleRu)}
                 </p>
               </TableCell>
               <TableCell>
@@ -779,6 +790,7 @@ function PlansDonut({
 }: {
   data: { name: string; value: number; active: number; total: number }[];
 }) {
+  const { t } = useT();
   const totalRevenue = data.reduce((a, d) => a + d.value, 0);
   return (
     <div className="flex flex-col gap-4 md:flex-row md:items-center">
@@ -802,7 +814,7 @@ function PlansDonut({
               contentStyle={tooltipStyle}
               formatter={(value) => [
                 formatCurrency(Number(value)),
-                "Daromad",
+                t("Daromad"),
               ]}
             />
           </PieChart>
@@ -810,7 +822,7 @@ function PlansDonut({
       </div>
       <div className="flex w-full flex-col gap-2 md:w-56">
         <div className="rounded-lg border border-[var(--border)] bg-[var(--muted)]/20 p-3">
-          <p className="text-xs text-[var(--muted-foreground)]">Jami daromad</p>
+          <p className="text-xs text-[var(--muted-foreground)]">{t("Jami daromad")}</p>
           <p className="text-lg font-semibold">
             {formatCurrency(totalRevenue)}
           </p>

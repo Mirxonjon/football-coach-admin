@@ -34,6 +34,7 @@ import {
 } from "@/features/age-categories/age-categories.api";
 import type { AgeCategory } from "@/lib/api-types";
 import { apiErrorMessage } from "@/lib/api";
+import { useBiLang, useT } from "@/lib/i18n";
 
 const schema = z
   .object({
@@ -109,7 +110,16 @@ function CategoryFormDialog({
         >
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="titleUz">Sarlavha (UZ)</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="titleUz">Sarlavha (UZ)</Label>
+                <TranslateButton
+                  direction="ru-uz"
+                  source={form.watch("titleRu")}
+                  onTranslated={(uz) =>
+                    form.setValue("titleUz", uz, { shouldDirty: true })
+                  }
+                />
+              </div>
               <Input id="titleUz" {...form.register("titleUz")} />
               {form.formState.errors.titleUz && (
                 <p className="text-xs text-[var(--destructive)]">
@@ -251,6 +261,8 @@ function DeleteDialog({
 }
 
 export default function AgeCategoriesPage() {
+  const { t } = useT();
+  const bi = useBiLang();
   const [editing, setEditing] = useState<AgeCategory | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<AgeCategory | null>(null);
@@ -267,14 +279,14 @@ export default function AgeCategoriesPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Yosh toifalari
+            {t("Yosh toifalari")}
           </h1>
           <p className="text-sm text-[var(--muted-foreground)]">
-            Trenerlik toifalari uchun yosh diapazonlari
+            {t("Trenerlik toifalari uchun yosh diapazonlari")}
           </p>
         </div>
         <Button onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4" /> Yangi toifa
+          <Plus className="h-4 w-4" /> {t("Yangi toifa")}
         </Button>
       </div>
 
@@ -287,11 +299,11 @@ export default function AgeCategoriesPage() {
       ) : items.length === 0 ? (
         <EmptyState
           icon={Baby}
-          title="Toifalar mavjud emas"
-          description="Birinchi yosh toifasini qo'shing"
+          title={t("Toifalar mavjud emas")}
+          description={t("Birinchi yosh toifasini qo'shing")}
           action={
             <Button onClick={() => setCreating(true)}>
-              <Plus className="h-4 w-4" /> Yangi toifa
+              <Plus className="h-4 w-4" /> {t("Yangi toifa")}
             </Button>
           }
         />
@@ -308,7 +320,7 @@ export default function AgeCategoriesPage() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={c.iconUrl}
-                    alt={c.titleUz}
+                    alt={bi.primary(c.titleUz, c.titleRu)}
                     className="h-12 w-12 rounded-lg object-cover"
                   />
                 ) : (
@@ -318,17 +330,17 @@ export default function AgeCategoriesPage() {
                 )}
                 <div className="flex min-w-0 flex-1 flex-col">
                   <CardTitle className="truncate text-base">
-                    {c.titleUz}
+                    {bi.primary(c.titleUz, c.titleRu)}
                   </CardTitle>
                   <CardDescription className="truncate">
-                    {c.titleRu}
+                    {bi.secondary(c.titleUz, c.titleRu)}
                   </CardDescription>
                 </div>
               </CardHeader>
               <CardContent className="flex items-center justify-between">
                 <div className="flex flex-col">
                   <span className="text-xs text-[var(--muted-foreground)]">
-                    Yosh oralig&apos;i
+                    {t("Yosh oralig'i")}
                   </span>
                   <span className="text-sm font-semibold">
                     {c.minAge} – {c.maxAge}

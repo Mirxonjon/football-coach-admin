@@ -9,11 +9,25 @@ export type BookCategoryBody = {
 
 export type BookCategoryUpdateBody = Partial<BookCategoryBody>;
 
+export type BookCategoryListParams = {
+  search?: string;
+  categoryType?: BookCategoryType;
+};
+
 const LIST = "/book-categories";
 const B = "/admin/book-categories";
 
+function clean(params?: BookCategoryListParams) {
+  if (!params) return undefined;
+  const out: Record<string, string> = {};
+  if (params.search?.trim()) out.search = params.search.trim();
+  if (params.categoryType) out.categoryType = params.categoryType;
+  return Object.keys(out).length ? out : undefined;
+}
+
 export const bookCategoriesApi = {
-  list: () => apiGet<BookCategory[]>(LIST),
+  list: (params?: BookCategoryListParams) =>
+    apiGet<BookCategory[]>(LIST, { params: clean(params) }),
   create: (body: BookCategoryBody) => apiPost<BookCategory>(B, body),
   update: (id: number, body: BookCategoryUpdateBody) =>
     apiPatch<BookCategory>(`${B}/${id}`, body),

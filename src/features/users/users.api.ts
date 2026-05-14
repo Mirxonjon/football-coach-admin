@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPatch } from "@/lib/api";
+import { apiDelete, apiGet, apiGetPaginated, apiPatch } from "@/lib/api";
 import type { User } from "@/lib/api-types";
 
 export type UsersListParams = {
@@ -17,7 +17,7 @@ export type PaginatedMeta = {
 
 export type UsersListResponse = {
   data: User[];
-  meta: PaginatedMeta;
+  meta: PaginatedMeta | null;
 };
 
 export type AdminUpdateUserBody = {
@@ -28,8 +28,8 @@ export type AdminUpdateUserBody = {
 const B = "/admin/users";
 
 export const usersApi = {
-  list: (params?: UsersListParams) =>
-    apiGet<UsersListResponse>(B, {
+  list: async (params?: UsersListParams): Promise<UsersListResponse> => {
+    const out = await apiGetPaginated<User[]>(B, {
       params: {
         ...(params?.search ? { search: params.search } : {}),
         ...(params?.isActive !== undefined
@@ -38,7 +38,9 @@ export const usersApi = {
         page: String(params?.page ?? 1),
         limit: String(params?.limit ?? 20),
       },
-    }),
+    });
+    return { data: out.data, meta: out.meta };
+  },
   get: (id: number) => apiGet<User>(`${B}/${id}`),
   update: (id: number, body: AdminUpdateUserBody) =>
     apiPatch<User>(`${B}/${id}`, body),

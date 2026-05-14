@@ -2,17 +2,22 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
+import { useFieldArray, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import {
+  ArrowDown,
+  ArrowUp,
+  Check,
   Package,
   Plus,
   Pencil,
+  Star,
   Trash2,
   AlertTriangle,
   Sparkles,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -42,17 +47,33 @@ import {
 
 import { apiErrorMessage } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-import type { DiscountType, SubscriptionPlan } from "@/lib/api-types";
+import type {
+  DiscountType,
+  PlanFeature,
+  SubscriptionPlan,
+} from "@/lib/api-types";
 import {
   computeFinalPrice,
   hasDiscount,
   plansApi,
   type PlanPayload,
 } from "@/features/plans/plans.api";
+import {
+  TranslateButton,
+  type TranslateDirection,
+} from "@/components/translate-button";
+import { translateUzToRu, translateRuToUz } from "@/lib/translate";
+import { useBiLang, useT } from "@/lib/i18n";
 
 // --- schema ---------------------------------------------------------------
 
 const discountTypes: DiscountType[] = ["NONE", "PERCENTAGE", "FIXED_PRICE"];
+
+const featureSchema = z.object({
+  uz: z.string().trim().max(200, "Maksimal 200 belgi").default(""),
+  ru: z.string().trim().max(200, "Maksimal 200 belgi").default(""),
+  highlight: z.boolean().default(false),
+});
 
 const planSchema = z
   .object({
@@ -66,6 +87,7 @@ const planSchema = z
     discountPercent: z.coerce.number().min(0).max(100).default(0),
     fixedDiscountPrice: z.coerce.number().min(0).optional().nullable(),
     isActive: z.boolean().default(true),
+    features: z.array(featureSchema).max(20, "Maksimal 20 ta").default([]),
   })
   .superRefine((v, ctx) => {
     if (v.discountType === "PERCENTAGE" && (v.discountPercent ?? 0) <= 0) {
@@ -107,6 +129,7 @@ const defaultValues: PlanFormValues = {
   discountPercent: 0,
   fixedDiscountPrice: null,
   isActive: true,
+  features: [],
 };
 
 // --- utils ----------------------------------------------------------------
@@ -126,6 +149,8 @@ function durationLabel(days: number): string {
 // --- page -----------------------------------------------------------------
 
 export default function PlansPage() {
+  const { t } = useT();
+  const bi = useBiLang();
   const qc = useQueryClient();
   const [dialogMode, setDialogMode] = useState<"create" | "edit" | null>(null);
   const [editingPlan, setEditingPlan] = useState<SubscriptionPlan | null>(null);
@@ -184,14 +209,14 @@ export default function PlansPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Tariflar</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("Tariflar")}</h1>
           <p className="text-sm text-[var(--muted-foreground)]">
-            Obuna tariflari va chegirmalarni boshqarish
+            {t("Obuna tariflari va chegirmalarni boshqarish")}
           </p>
         </div>
         <Button onClick={openCreate}>
           <Plus className="h-4 w-4" />
-          Yangi tarif
+          {t("Yangi tarif")}
         </Button>
       </div>
 
@@ -222,12 +247,12 @@ export default function PlansPage() {
       ) : (
         <EmptyState
           icon={Package}
-          title="Tariflar mavjud emas"
-          description="Birinchi obuna tarifini yarating"
+          title={t("Tariflar mavjud emas")}
+          description={t("Birinchi obuna tarifini yarating")}
           action={
             <Button onClick={openCreate}>
               <Plus className="h-4 w-4" />
-              Yangi tarif
+              {t("Yangi tarif")}
             </Button>
           }
         />
@@ -257,10 +282,9 @@ export default function PlansPage() {
             </DialogTitle>
             <DialogDescription>
               <span className="font-medium text-[var(--foreground)]">
-                {deletingPlan?.titleUz}
+                {bi.primary(deletingPlan?.titleUz, deletingPlan?.titleRu)}
               </span>{" "}
-              tarifini butunlay o&apos;chirmoqchimisiz? Bu amalni bekor qilib
-              bo&apos;lmaydi.
+              — {t("Bu amalni bekor qilib bo'lmaydi.")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -302,6 +326,8 @@ function PlanCard({
   onToggle: (v: boolean) => void;
   toggleLoading?: boolean;
 }) {
+  const { t } = useT();
+  const bi = useBiLang();
   const finalPrice = computeFinalPrice(plan);
   const discounted = hasDiscount(plan);
 
@@ -318,9 +344,11 @@ function PlanCard({
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <CardTitle className="truncate text-lg">{plan.titleUz}</CardTitle>
+            <CardTitle className="truncate text-lg">
+              {bi.primary(plan.titleUz, plan.titleRu)}
+            </CardTitle>
             <p className="mt-0.5 truncate text-xs text-[var(--muted-foreground)]">
-              {plan.titleRu}
+              {bi.secondary(plan.titleUz, plan.titleRu)}
             </p>
           </div>
           <Badge
@@ -333,7 +361,7 @@ function PlanCard({
       </CardHeader>
       <CardContent className="flex flex-1 flex-col gap-4">
         <p className="text-sm text-[var(--muted-foreground)] line-clamp-2">
-          {plan.descriptionUz}
+          {bi.primary(plan.descriptionUz, plan.descriptionRu)}
         </p>
 
         <div className="flex items-baseline gap-2">
@@ -358,6 +386,37 @@ function PlanCard({
           )}
         </div>
 
+        {plan.features && plan.features.length > 0 && (
+          <ul className="flex flex-col gap-1.5 text-sm">
+            {plan.features.slice(0, 5).map((f, i) => (
+              <li
+                key={i}
+                className={`flex items-start gap-2 ${
+                  f.highlight
+                    ? "font-semibold text-[var(--foreground)]"
+                    : "text-[var(--muted-foreground)]"
+                }`}
+              >
+                <Check
+                  className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${
+                    f.highlight
+                      ? "text-[var(--primary)]"
+                      : "text-[var(--muted-foreground)]"
+                  }`}
+                />
+                <span className="line-clamp-1">
+                  {bi.primary(f.uz, f.ru)}
+                </span>
+              </li>
+            ))}
+            {plan.features.length > 5 && (
+              <li className="text-xs text-[var(--muted-foreground)]">
+                + {plan.features.length - 5} {t("yana")}
+              </li>
+            )}
+          </ul>
+        )}
+
         <div className="mt-auto flex items-center justify-between border-t border-[var(--border)] pt-4">
           <div className="flex items-center gap-2">
             <Switch
@@ -370,7 +429,7 @@ function PlanCard({
               htmlFor={`plan-active-${plan.id}`}
               className="cursor-pointer text-xs text-[var(--muted-foreground)]"
             >
-              {plan.isActive ? "Faol" : "Nofaol"}
+              {t(plan.isActive ? "Faol" : "Nofaol")}
             </Label>
           </div>
           <div className="flex items-center gap-1">
@@ -426,17 +485,26 @@ function PlanFormDialog({
             discountPercent: plan.discountPercent ?? 0,
             fixedDiscountPrice: plan.fixedDiscountPrice ?? null,
             isActive: plan.isActive,
+            features: (plan.features ?? []).map((f) => ({
+              uz: f.uz ?? "",
+              ru: f.ru ?? "",
+              highlight: !!f.highlight,
+            })),
           }
         : defaultValues,
   });
 
   const {
+    control,
     register,
     handleSubmit,
     watch,
     setValue,
+    getValues,
     formState: { errors, isSubmitting },
   } = form;
+
+  const featuresField = useFieldArray({ control, name: "features" });
 
   const discountType = watch("discountType");
   const basePrice = watch("basePrice");
@@ -458,6 +526,14 @@ function PlanFormDialog({
 
   const save = useMutation({
     mutationFn: async (values: PlanFormOutput) => {
+      const cleanedFeatures: PlanFeature[] = (values.features ?? [])
+        .map((f) => ({
+          uz: (f.uz ?? "").trim(),
+          ru: (f.ru ?? "").trim(),
+          highlight: !!f.highlight,
+        }))
+        .filter((f) => f.uz.length > 0 || f.ru.length > 0);
+
       const payload: PlanPayload = {
         titleUz: values.titleUz,
         titleRu: values.titleRu,
@@ -473,6 +549,7 @@ function PlanFormDialog({
             ? values.fixedDiscountPrice ?? null
             : null,
         isActive: values.isActive,
+        features: cleanedFeatures,
       };
       if (mode === "edit" && plan) {
         return plansApi.update(plan.id, payload);
@@ -506,10 +583,28 @@ function PlanFormDialog({
           className="flex flex-col gap-4"
         >
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Sarlavha (UZ)" error={errors.titleUz?.message}>
+            <Field
+              label="Sarlavha (UZ)"
+              error={errors.titleUz?.message}
+              translate={{
+                direction: "ru-uz",
+                source: watch("titleRu"),
+                onTranslated: (v) =>
+                  setValue("titleUz", v, { shouldDirty: true }),
+              }}
+            >
               <Input placeholder="1 oylik" {...register("titleUz")} />
             </Field>
-            <Field label="Sarlavha (RU)" error={errors.titleRu?.message}>
+            <Field
+              label="Sarlavha (RU)"
+              error={errors.titleRu?.message}
+              translate={{
+                direction: "uz-ru",
+                source: watch("titleUz"),
+                onTranslated: (v) =>
+                  setValue("titleRu", v, { shouldDirty: true }),
+              }}
+            >
               <Input placeholder="1 месяц" {...register("titleRu")} />
             </Field>
           </div>
@@ -518,6 +613,12 @@ function PlanFormDialog({
             <Field
               label="Ta'rif (UZ)"
               error={errors.descriptionUz?.message}
+              translate={{
+                direction: "ru-uz",
+                source: watch("descriptionRu"),
+                onTranslated: (v) =>
+                  setValue("descriptionUz", v, { shouldDirty: true }),
+              }}
             >
               <Textarea
                 rows={3}
@@ -528,6 +629,12 @@ function PlanFormDialog({
             <Field
               label="Ta'rif (RU)"
               error={errors.descriptionRu?.message}
+              translate={{
+                direction: "uz-ru",
+                source: watch("descriptionUz"),
+                onTranslated: (v) =>
+                  setValue("descriptionRu", v, { shouldDirty: true }),
+              }}
             >
               <Textarea
                 rows={3}
@@ -629,6 +736,173 @@ function PlanFormDialog({
             </span>
           </div>
 
+          <div className="flex flex-col gap-3 rounded-lg border border-[var(--border)] p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex flex-col">
+                <Label className="text-sm font-semibold">
+                  Ustunliklar (UZ + RU)
+                </Label>
+                <p className="text-xs text-[var(--muted-foreground)]">
+                  Tarif kartasida ro&apos;yxat sifatida chiqadi. Maks. 20 ta,
+                  har bir matn 200 belgi.
+                </p>
+              </div>
+              <Badge variant="outline" className="shrink-0">
+                {featuresField.fields.length} / 20
+              </Badge>
+            </div>
+
+            {featuresField.fields.length === 0 ? (
+              <p className="rounded border border-dashed border-[var(--border)] py-3 text-center text-xs text-[var(--muted-foreground)]">
+                Hali ustunlik qo&apos;shilmagan
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {featuresField.fields.map((field, idx) => (
+                  <li
+                    key={field.id}
+                    className="flex flex-col gap-2 rounded-md border border-[var(--border)] bg-[var(--muted)]/30 p-2 sm:flex-row sm:items-start"
+                  >
+                    <div className="flex items-center gap-1 sm:flex-col sm:gap-0.5">
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        onClick={() => idx > 0 && featuresField.move(idx, idx - 1)}
+                        disabled={idx === 0}
+                        aria-label="Yuqoriga"
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </Button>
+                      <span className="font-mono text-[10px] text-[var(--muted-foreground)]">
+                        {idx + 1}
+                      </span>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6"
+                        onClick={() =>
+                          idx < featuresField.fields.length - 1 &&
+                          featuresField.move(idx, idx + 1)
+                        }
+                        disabled={idx === featuresField.fields.length - 1}
+                        aria-label="Pastga"
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+
+                    <div className="grid flex-1 gap-2 sm:grid-cols-2">
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <Label className="text-[10px] uppercase text-[var(--muted-foreground)]">
+                            UZ
+                          </Label>
+                          <button
+                            type="button"
+                            className="text-[10px] text-[var(--primary)] hover:underline disabled:opacity-50"
+                            disabled={!watch(`features.${idx}.ru`)?.trim()}
+                            onClick={async () => {
+                              const src = getValues(`features.${idx}.ru`) ?? "";
+                              if (!src.trim()) return;
+                              try {
+                                const out = await translateRuToUz(src);
+                                setValue(`features.${idx}.uz`, out, {
+                                  shouldDirty: true,
+                                });
+                              } catch (e) {
+                                toast.error(apiErrorMessage(e));
+                              }
+                            }}
+                          >
+                            RU → UZ
+                          </button>
+                        </div>
+                        <Input
+                          maxLength={200}
+                          placeholder="Masalan: Barcha pullik darslar"
+                          {...register(`features.${idx}.uz` as const)}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between gap-1">
+                          <Label className="text-[10px] uppercase text-[var(--muted-foreground)]">
+                            RU
+                          </Label>
+                          <button
+                            type="button"
+                            className="text-[10px] text-[var(--primary)] hover:underline disabled:opacity-50"
+                            disabled={!watch(`features.${idx}.uz`)?.trim()}
+                            onClick={async () => {
+                              const src = getValues(`features.${idx}.uz`) ?? "";
+                              if (!src.trim()) return;
+                              try {
+                                const out = await translateUzToRu(src);
+                                setValue(`features.${idx}.ru`, out, {
+                                  shouldDirty: true,
+                                });
+                              } catch (e) {
+                                toast.error(apiErrorMessage(e));
+                              }
+                            }}
+                          >
+                            UZ → RU
+                          </button>
+                        </div>
+                        <Input
+                          maxLength={200}
+                          placeholder="Например: Все платные уроки"
+                          {...register(`features.${idx}.ru` as const)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 sm:flex-col sm:items-end">
+                      <label className="flex cursor-pointer items-center gap-1 text-[11px] text-[var(--muted-foreground)]">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 accent-[var(--primary)]"
+                          {...register(`features.${idx}.highlight` as const)}
+                        />
+                        <Star className="h-3 w-3" /> Bold
+                      </label>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-[var(--destructive)] hover:text-[var(--destructive)]"
+                        onClick={() => featuresField.remove(idx)}
+                        aria-label="O'chirish"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-start"
+              onClick={() =>
+                featuresField.append({ uz: "", ru: "", highlight: false })
+              }
+              disabled={featuresField.fields.length >= 20}
+            >
+              <Plus className="h-4 w-4" /> Ustunlik qo&apos;shish
+            </Button>
+            {errors.features?.message && (
+              <p className="text-xs text-[var(--destructive)]">
+                {errors.features.message}
+              </p>
+            )}
+          </div>
+
           <div className="rounded-lg border border-[var(--primary)]/30 bg-[var(--primary)]/5 p-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium uppercase tracking-wide text-[var(--muted-foreground)]">
@@ -679,14 +953,31 @@ function Field({
   label,
   error,
   children,
+  translate,
 }: {
   label: string;
   error?: string;
   children: React.ReactNode;
+  translate?: {
+    direction: TranslateDirection;
+    source: string | null | undefined;
+    onTranslated: (v: string) => void;
+  };
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <Label>{label}</Label>
+      {translate ? (
+        <div className="flex items-center justify-between gap-2">
+          <Label>{label}</Label>
+          <TranslateButton
+            direction={translate.direction}
+            source={translate.source}
+            onTranslated={translate.onTranslated}
+          />
+        </div>
+      ) : (
+        <Label>{label}</Label>
+      )}
       {children}
       {error && <p className="text-xs text-[var(--destructive)]">{error}</p>}
     </div>

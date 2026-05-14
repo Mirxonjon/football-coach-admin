@@ -40,6 +40,7 @@ export type TrainingCategory = {
   imageUrl?: string | null;
   ageCategoriesId: number;
   ageCategory?: AgeCategory;
+  lessonCount?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -54,6 +55,8 @@ export type LessonBlock = {
   contentRu: string;
   duration?: number | null;
   sequenceOrder: number;
+  isFree?: boolean;
+  isLocked?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -64,12 +67,73 @@ export type TrainingLesson = {
   trainingCategory?: TrainingCategory;
   titleUz: string;
   titleRu: string;
+  isFree?: boolean;
+  isLocked?: boolean;
   lessonBlocks?: LessonBlock[];
   createdAt: string;
   updatedAt: string;
 };
 
+export type MasterclassCategory = {
+  id: number;
+  titleUz: string;
+  titleRu: string;
+  descriptionUz: string;
+  descriptionRu: string;
+  imageUrl?: string | null;
+  masterclassCount?: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MasterclassBlock = {
+  id: number;
+  masterclassId: number;
+  blockType: BlockType;
+  contentUz: string;
+  contentRu: string;
+  duration?: number | null;
+  sequenceOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Masterclass = {
+  id: number;
+  masterclassCategoryId: number;
+  masterclassCategory?: MasterclassCategory;
+  titleUz: string;
+  titleRu: string;
+  masterclassBlocks?: MasterclassBlock[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type BookCategoryType = "BOOK" | "KONSPEKT";
+
+// ---------------------------------------------------------------------------
+// Legal documents
+// ---------------------------------------------------------------------------
+
+export type LegalDocumentType =
+  | "PRIVACY_POLICY"
+  | "TERMS_OF_SERVICE"
+  | "OFFER_AGREEMENT"
+  | "REQUISITES";
+
+export type LegalDocument = {
+  id: number;
+  type: LegalDocumentType;
+  version: number;
+  titleUz: string;
+  titleRu: string;
+  contentUz: string;
+  contentRu: string;
+  isActive: boolean;
+  publishedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type BookCategory = {
   id: number;
@@ -101,6 +165,12 @@ export type Book = {
   updatedAt: string;
 };
 
+export type PlanFeature = {
+  uz: string;
+  ru: string;
+  highlight?: boolean;
+};
+
 export type SubscriptionPlan = {
   id: number;
   titleUz: string;
@@ -113,6 +183,7 @@ export type SubscriptionPlan = {
   discountPercent: number;
   fixedDiscountPrice?: number | null;
   isActive: boolean;
+  features: PlanFeature[];
   createdAt: string;
   updatedAt: string;
 };

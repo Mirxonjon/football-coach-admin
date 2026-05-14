@@ -1,5 +1,16 @@
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
-import type { Book, BookCategory, DiscountType } from "@/lib/api-types";
+import {
+  apiDelete,
+  apiGet,
+  apiGetPaginated,
+  apiPatch,
+  apiPost,
+} from "@/lib/api";
+import type {
+  Book,
+  BookCategory,
+  BookCategoryType,
+  DiscountType,
+} from "@/lib/api-types";
 
 export type CreateBookDto = {
   bookCategoryId: number;
@@ -18,11 +29,46 @@ export type CreateBookDto = {
 
 export type UpdateBookDto = Partial<CreateBookDto>;
 
+export type BookSortBy = "id" | "createdAt" | "basePrice";
+export type SortOrder = "asc" | "desc";
+
+export type BookListParams = {
+  categoryId?: number;
+  search?: string;
+  categoryType?: BookCategoryType;
+  page?: number;
+  limit?: number;
+  all?: boolean;
+  sortBy?: BookSortBy;
+  sortOrder?: SortOrder;
+  hasDiscount?: boolean;
+  isFree?: boolean;
+};
+
+function cleanBookParams(params?: BookListParams) {
+  if (!params) return undefined;
+  const out: Record<string, string | number | boolean> = {};
+  if (params.categoryId) out.categoryId = params.categoryId;
+  if (params.search?.trim()) out.search = params.search.trim();
+  if (params.categoryType) out.categoryType = params.categoryType;
+  if (params.page) out.page = params.page;
+  if (params.limit) out.limit = params.limit;
+  if (params.all) out.all = true;
+  if (params.sortBy) out.sortBy = params.sortBy;
+  if (params.sortOrder) out.sortOrder = params.sortOrder;
+  if (params.hasDiscount != null) out.hasDiscount = params.hasDiscount;
+  if (params.isFree != null) out.isFree = params.isFree;
+  return Object.keys(out).length ? out : undefined;
+}
+
 export const booksApi = {
-  list: (bookCategoryId?: number) =>
-    apiGet<Book[]>("/books", {
-      params: bookCategoryId ? { bookCategoryId } : undefined,
-    }),
+  /** Returns just the data array — for callers that don't need pagination meta. */
+  list: (params?: BookListParams) =>
+    apiGet<Book[]>("/books", { params: cleanBookParams(params) }),
+
+  /** Returns { data, meta } — use for paginated UIs. */
+  listPaginated: (params?: BookListParams) =>
+    apiGetPaginated<Book[]>("/books", { params: cleanBookParams(params) }),
 
   categories: () => apiGet<BookCategory[]>("/book-categories"),
 

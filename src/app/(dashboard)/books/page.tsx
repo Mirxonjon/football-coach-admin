@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm, type UseFormRegisterReturn } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,13 +8,18 @@ import { z } from "zod";
 import { toast } from "sonner";
 import {
   BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
   FileText,
   ImagePlus,
   Loader2,
   Pencil,
   Plus,
+  Search,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -50,11 +55,23 @@ import {
   uploadAsset,
   type UploadFolder,
 } from "@/features/uploads/upload.api";
-import type { Book, BookCategory, DiscountType } from "@/lib/api-types";
+import type {
+  Book,
+  BookCategory,
+  BookCategoryType,
+  DiscountType,
+} from "@/lib/api-types";
 import { apiErrorMessage } from "@/lib/api";
 import { cn, formatCurrency } from "@/lib/utils";
+import {
+  TranslateButton,
+  type TranslateDirection,
+} from "@/components/translate-button";
+import { useBiLang, useT } from "@/lib/i18n";
 
 const ALL = "all" as const;
+const TYPE_ALL = "__all_types__";
+const PAGE_SIZE = 12;
 
 const DISCOUNT_LABEL: Record<DiscountType, string> = {
   NONE: "Chegirma yo'q",
@@ -67,13 +84,34 @@ const DISCOUNT_LABEL: Record<DiscountType, string> = {
 // ---------------------------------------------------------------------------
 
 export default function BooksPage() {
+  const { t } = useT();
+  const bi = useBiLang();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<string>(ALL);
+  const [typeFilter, setTypeFilter] = useState<string>(TYPE_ALL);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Book | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Book | null>(null);
+  const [viewTarget, setViewTarget] = useState<Book | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const filterId = filter === ALL ? undefined : Number(filter);
+  const categoryType =
+    typeFilter === TYPE_ALL ? undefined : (typeFilter as BookCategoryType);
+
+  // Reset to first page whenever any filter or page size changes (otherwise
+  // user lands on an out-of-range page after narrowing results).
+  useEffect(() => {
+    setPage(1);
+  }, [filterId, categoryType, debouncedSearch, pageSize]);
 
   const categoriesQ = useQuery({
     queryKey: ["book-categories"],
@@ -81,9 +119,42 @@ export default function BooksPage() {
   });
 
   const booksQ = useQuery({
-    queryKey: ["books", { bookCategoryId: filterId ?? null }],
-    queryFn: () => booksApi.list(filterId),
+    queryKey: [
+      "books",
+      {
+        categoryId: filterId ?? null,
+        search: debouncedSearch,
+        categoryType,
+        page,
+        limit: pageSize,
+      },
+    ],
+    queryFn: () =>
+      booksApi.listPaginated({
+        categoryId: filterId,
+        search: debouncedSearch || undefined,
+        categoryType,
+        page,
+        limit: pageSize,
+      }),
+    placeholderData: (prev) => prev,
   });
+
+  const books = booksQ.data?.data ?? [];
+  const meta = booksQ.data?.meta ?? null;
+  const totalPages = meta?.totalPages ?? 1;
+  const total = meta?.total ?? books.length;
+
+  const hasFilters =
+    filterId !== undefined ||
+    categoryType !== undefined ||
+    debouncedSearch.length > 0;
+
+  const clearFilters = () => {
+    setFilter(ALL);
+    setTypeFilter(TYPE_ALL);
+    setSearch("");
+  };
 
   const categoriesById = useMemo(() => {
     const m = new Map<number, BookCategory>();
@@ -103,40 +174,71 @@ export default function BooksPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Kitoblar</h1>
-          <p className="text-sm text-[var(--muted-foreground)]">
-            Kitob va konspektlarni boshqaring, narx va chegirmalarni sozlang
-          </p>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex flex-col gap-1">
-            <Label className="text-xs text-[var(--muted-foreground)]">
-              Toifa
-            </Label>
-            <Select value={filter} onValueChange={setFilter}>
-              <SelectTrigger className="min-w-[220px]">
-                <SelectValue placeholder="Barcha toifalar" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL}>Barcha toifalar</SelectItem>
-                {(categoriesQ.data ?? []).map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.titleUz}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">{t("Kitoblar")}</h1>
+            <p className="text-sm text-[var(--muted-foreground)]">
+              {t("Kitob va konspektlarni boshqaring, narx va chegirmalarni sozlang")}
+            </p>
           </div>
-          <Button onClick={() => setCreateOpen(true)} className="sm:self-end">
+          <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" />
-            Yangi kitob
+            {t("Yangi kitob")}
           </Button>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("Kitob sarlavhasi bo'yicha izlash...")}
+              className="pl-9 pr-9"
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch("")}
+                aria-label="Tozalash"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <Select value={filter} onValueChange={setFilter}>
+            <SelectTrigger className="sm:w-56">
+              <SelectValue placeholder={t("Barcha toifalar")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>{t("Barcha toifalar")}</SelectItem>
+              {(categoriesQ.data ?? []).map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  {bi.primary(c.titleUz, c.titleRu)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="sm:w-44">
+              <SelectValue placeholder={t("Barcha turlar")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TYPE_ALL}>{t("Barcha turlar")}</SelectItem>
+              <SelectItem value="BOOK">{t("Kitob")}</SelectItem>
+              <SelectItem value="KONSPEKT">{t("Konspekt")}</SelectItem>
+            </SelectContent>
+          </Select>
+          {hasFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters}>
+              {t("Tozalash")}
+            </Button>
+          )}
         </div>
       </div>
 
-      {booksQ.isLoading ? (
+      {booksQ.isLoading && !booksQ.data ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-72 w-full" />
@@ -146,35 +248,70 @@ export default function BooksPage() {
         <div className="p-6 text-sm text-[var(--destructive)]">
           {apiErrorMessage(booksQ.error)}
         </div>
-      ) : !booksQ.data?.length ? (
+      ) : !books.length ? (
         <EmptyState
           icon={BookOpen}
-          title="Kitoblar topilmadi"
+          title={t("Kitoblar topilmadi")}
           description={
-            filterId
-              ? "Ushbu toifada kitoblar mavjud emas. Yangi kitob qo'shing."
-              : "Hali hech qanday kitob yaratilmagan."
+            hasFilters
+              ? t("Filtrlarga mos kitob topilmadi. Filtrlarni tozalab ko'ring.")
+              : t("Hali hech qanday kitob yaratilmagan.")
           }
           action={
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Yangi kitob
-            </Button>
+            hasFilters ? (
+              <Button variant="outline" onClick={clearFilters}>
+                {t("Filtrlarni tozalash")}
+              </Button>
+            ) : (
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4" />
+                {t("Yangi kitob")}
+              </Button>
+            )
           }
         />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {booksQ.data.map((b) => (
-            <BookCard
-              key={b.id}
-              book={b}
-              category={categoriesById.get(b.bookCategoryId) ?? b.bookCategory}
-              onEdit={() => setEditTarget(b)}
-              onDelete={() => setDeleteTarget(b)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {books.map((b) => (
+              <BookCard
+                key={b.id}
+                book={b}
+                category={categoriesById.get(b.bookCategoryId) ?? b.bookCategory}
+                onView={() => setViewTarget(b)}
+                onEdit={() => setEditTarget(b)}
+                onDelete={() => setDeleteTarget(b)}
+              />
+            ))}
+          </div>
+
+          <Pagination
+            page={meta?.page ?? page}
+            totalPages={totalPages}
+            total={total}
+            limit={meta?.limit ?? pageSize}
+            onChange={(p) => setPage(p)}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
+            isFetching={booksQ.isFetching}
+          />
+        </>
       )}
+
+      <BookDetailDialog
+        book={viewTarget}
+        category={
+          viewTarget
+            ? categoriesById.get(viewTarget.bookCategoryId) ??
+              viewTarget.bookCategory
+            : undefined
+        }
+        onClose={() => setViewTarget(null)}
+        onEdit={(b) => {
+          setViewTarget(null);
+          setEditTarget(b);
+        }}
+      />
 
       <BookFormDialog
         open={createOpen}
@@ -201,7 +338,7 @@ export default function BooksPage() {
             <DialogTitle>Kitobni o&apos;chirish</DialogTitle>
             <DialogDescription>
               {deleteTarget
-                ? `"${deleteTarget.titleUz}" kitobi o'chiriladi. Bu amalni bekor qilib bo'lmaydi.`
+                ? `"${bi.primary(deleteTarget.titleUz, deleteTarget.titleRu)}" — ${t("Bu amalni bekor qilib bo'lmaydi.")}`
                 : ""}
             </DialogDescription>
           </DialogHeader>
@@ -235,26 +372,33 @@ export default function BooksPage() {
 function BookCard({
   book,
   category,
+  onView,
   onEdit,
   onDelete,
 }: {
   book: Book;
   category?: BookCategory;
+  onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useT();
+  const bi = useBiLang();
   const finalPrice = computeFinalPrice(book);
   const hasDiscount = finalPrice !== book.basePrice;
 
   return (
-    <Card className="flex flex-col overflow-hidden">
-      <div className="relative flex h-44 w-full items-center justify-center bg-[var(--muted)]">
+    <Card
+      className="flex cursor-pointer flex-col overflow-hidden transition hover:border-[var(--primary)]/40 hover:shadow-md"
+      onClick={onView}
+    >
+      <div className="relative flex h-44 w-full items-center justify-center overflow-hidden bg-[var(--muted)]">
         {book.coverImageUrl ? (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
             src={book.coverImageUrl}
-            alt={book.titleUz}
-            className="h-full w-full object-cover"
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover"
           />
         ) : (
           <BookOpen className="h-10 w-10 text-[var(--muted-foreground)]" />
@@ -264,24 +408,27 @@ function BookCard({
             variant="secondary"
             className="absolute left-2 top-2 text-[10px] uppercase"
           >
-            {category.categoryType === "KONSPEKT" ? "Konspekt" : "Kitob"}
+            {t(category.categoryType === "KONSPEKT" ? "Konspekt" : "Kitob")}
           </Badge>
         )}
       </div>
       <CardContent className="flex flex-1 flex-col gap-2 p-4">
         <div className="flex-1">
-          <h3 className="line-clamp-2 font-semibold" title={book.titleUz}>
-            {book.titleUz}
+          <h3
+            className="line-clamp-2 font-semibold"
+            title={bi.primary(book.titleUz, book.titleRu)}
+          >
+            {bi.primary(book.titleUz, book.titleRu)}
           </h3>
           <p
             className="line-clamp-1 text-xs text-[var(--muted-foreground)]"
-            title={book.titleRu}
+            title={bi.secondary(book.titleUz, book.titleRu)}
           >
-            {book.titleRu}
+            {bi.secondary(book.titleUz, book.titleRu)}
           </p>
           {category && (
             <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-              {category.titleUz}
+              {bi.primary(category.titleUz, category.titleRu)}
             </p>
           )}
         </div>
@@ -296,12 +443,20 @@ function BookCard({
               {formatCurrency(finalPrice)}
             </p>
           </div>
-          <div className="flex gap-1">
+          <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onView}
+              aria-label={t("Ko'rish")}
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
             <Button
               variant="ghost"
               size="icon"
               onClick={onEdit}
-              aria-label="Tahrirlash"
+              aria-label={t("Tahrirlash")}
             >
               <Pencil className="h-4 w-4" />
             </Button>
@@ -309,7 +464,7 @@ function BookCard({
               variant="ghost"
               size="icon"
               onClick={onDelete}
-              aria-label="O'chirish"
+              aria-label={t("O'chirish")}
             >
               <Trash2 className="h-4 w-4 text-[var(--destructive)]" />
             </Button>
@@ -317,6 +472,195 @@ function BookCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Detail dialog
+// ---------------------------------------------------------------------------
+
+function BookDetailDialog({
+  book,
+  category,
+  onClose,
+  onEdit,
+}: {
+  book: Book | null;
+  category?: BookCategory;
+  onClose: () => void;
+  onEdit: (b: Book) => void;
+}) {
+  const { t } = useT();
+  const bi = useBiLang();
+  if (!book) return null;
+
+  const finalPrice = computeFinalPrice(book);
+  const hasDiscount = finalPrice !== book.basePrice;
+  const discountAmount = book.basePrice - finalPrice;
+  const discountPct =
+    book.basePrice > 0
+      ? Math.round((discountAmount / book.basePrice) * 100)
+      : 0;
+
+  const discountLabel =
+    book.discountType === "PERCENTAGE"
+      ? `-${book.discountPercent}%`
+      : book.discountType === "FIXED_PRICE"
+      ? t("Belgilangan narx")
+      : t("Chegirma yo'q");
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-3xl overflow-hidden p-0">
+        <DialogHeader className="sr-only">
+          <DialogTitle>{bi.primary(book.titleUz, book.titleRu)}</DialogTitle>
+          <DialogDescription>
+            {bi.secondary(book.titleUz, book.titleRu)}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-0 sm:grid-cols-[240px_1fr]">
+          <div className="relative flex h-60 w-full items-center justify-center overflow-hidden bg-[var(--muted)] sm:h-full sm:min-h-[360px]">
+            {book.coverImageUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={book.coverImageUrl}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            ) : (
+              <BookOpen className="h-16 w-16 text-[var(--muted-foreground)]" />
+            )}
+            {hasDiscount && (
+              <Badge className="absolute left-3 top-3 bg-[var(--destructive)] text-white">
+                -{discountPct}%
+              </Badge>
+            )}
+          </div>
+
+          <div className="flex max-h-[85vh] flex-col gap-4 overflow-y-auto p-6">
+            <div className="flex flex-col gap-1">
+              {category && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-[10px] uppercase">
+                    {t(
+                      category.categoryType === "KONSPEKT"
+                        ? "Konspekt"
+                        : "Kitob"
+                    )}
+                  </Badge>
+                  <span className="text-xs text-[var(--muted-foreground)]">
+                    {bi.primary(category.titleUz, category.titleRu)}
+                  </span>
+                </div>
+              )}
+              <h2 className="text-xl font-semibold tracking-tight break-words">
+                {bi.primary(book.titleUz, book.titleRu)}
+              </h2>
+              <p className="text-sm text-[var(--muted-foreground)] break-words">
+                {bi.secondary(book.titleUz, book.titleRu)}
+              </p>
+            </div>
+
+            <div className="flex items-baseline gap-3 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 px-4 py-3">
+              <div className="flex flex-col">
+                <span className="text-[11px] uppercase text-[var(--muted-foreground)]">
+                  {t("Yakuniy narx")}
+                </span>
+                <span className="text-2xl font-semibold">
+                  {formatCurrency(finalPrice)}
+                </span>
+              </div>
+              {hasDiscount && (
+                <div className="flex flex-col">
+                  <span className="text-[11px] uppercase text-[var(--muted-foreground)]">
+                    {t("Asosiy")}
+                  </span>
+                  <span className="text-sm text-[var(--muted-foreground)] line-through">
+                    {formatCurrency(book.basePrice)}
+                  </span>
+                </div>
+              )}
+              <Badge variant="outline" className="ml-auto shrink-0">
+                {discountLabel}
+              </Badge>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <Label className="text-[11px] uppercase text-[var(--muted-foreground)]">
+                  {t("Tavsif (UZ)")}
+                </Label>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                  {book.descriptionUz || "—"}
+                </p>
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label className="text-[11px] uppercase text-[var(--muted-foreground)]">
+                  {t("Tavsif (RU)")}
+                </Label>
+                <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                  {book.descriptionRu || "—"}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <a
+                href={book.fileUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex min-w-0 items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-sm transition hover:bg-[var(--accent)]"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--primary)]/10 text-[var(--primary)]">
+                  <FileText className="h-4 w-4" />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col leading-tight">
+                  <span className="font-medium">{t("PDF fayl")}</span>
+                  <span className="truncate text-xs text-[var(--muted-foreground)]">
+                    {book.fileUrl.split("/").pop()}
+                  </span>
+                </div>
+              </a>
+
+              {book.tacticHintImg ? (
+                <a
+                  href={book.tacticHintImg}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex min-w-0 items-center gap-3 rounded-md border border-[var(--border)] bg-[var(--card)] p-3 text-sm transition hover:bg-[var(--accent)]"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--primary)]/10 text-[var(--primary)]">
+                    <ImagePlus className="h-4 w-4" />
+                  </span>
+                  <div className="flex min-w-0 flex-1 flex-col leading-tight">
+                    <span className="font-medium">
+                      {t("Taktik maslahat rasmi")}
+                    </span>
+                    <span className="truncate text-xs text-[var(--muted-foreground)]">
+                      {book.tacticHintImg.split("/").pop()}
+                    </span>
+                  </div>
+                </a>
+              ) : null}
+            </div>
+
+            <div className="mt-auto flex items-center justify-between gap-2 pt-2 text-xs text-[var(--muted-foreground)]">
+              <span className="font-mono">#{book.id}</span>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={onClose}>
+                  {t("Yopish")}
+                </Button>
+                <Button size="sm" onClick={() => onEdit(book)}>
+                  <Pencil className="h-4 w-4" />
+                  {t("Tahrirlash")}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -371,6 +715,7 @@ function BookFormDialog({
   categories: BookCategory[];
   book?: Book;
 }) {
+  const bi = useBiLang();
   const qc = useQueryClient();
 
   const defaults: BookFormValues =
@@ -516,7 +861,7 @@ function BookFormDialog({
               <SelectContent>
                 {categories.map((c) => (
                   <SelectItem key={c.id} value={String(c.id)}>
-                    {c.titleUz}
+                    {bi.primary(c.titleUz, c.titleRu)}
                     <span className="ml-2 text-xs text-[var(--muted-foreground)]">
                       ({c.categoryType})
                     </span>
@@ -537,12 +882,24 @@ function BookFormDialog({
               label="Sarlavha (UZ)"
               register={form.register("titleUz")}
               error={form.formState.errors.titleUz?.message}
+              translate={{
+                direction: "ru-uz",
+                source: watched.titleRu,
+                onTranslated: (v) =>
+                  form.setValue("titleUz", v, { shouldDirty: true }),
+              }}
             />
             <FieldInput
               id="titleRu"
               label="Sarlavha (RU)"
               register={form.register("titleRu")}
               error={form.formState.errors.titleRu?.message}
+              translate={{
+                direction: "uz-ru",
+                source: watched.titleUz,
+                onTranslated: (v) =>
+                  form.setValue("titleRu", v, { shouldDirty: true }),
+              }}
             />
           </div>
 
@@ -552,12 +909,24 @@ function BookFormDialog({
               label="Tavsif (UZ)"
               register={form.register("descriptionUz")}
               error={form.formState.errors.descriptionUz?.message}
+              translate={{
+                direction: "ru-uz",
+                source: watched.descriptionRu,
+                onTranslated: (v) =>
+                  form.setValue("descriptionUz", v, { shouldDirty: true }),
+              }}
             />
             <FieldTextarea
               id="descriptionRu"
               label="Tavsif (RU)"
               register={form.register("descriptionRu")}
               error={form.formState.errors.descriptionRu?.message}
+              translate={{
+                direction: "uz-ru",
+                source: watched.descriptionUz,
+                onTranslated: (v) =>
+                  form.setValue("descriptionRu", v, { shouldDirty: true }),
+              }}
             />
           </div>
 
@@ -689,6 +1058,34 @@ function BookFormDialog({
 // Small field helpers
 // ---------------------------------------------------------------------------
 
+type TranslateProp = {
+  direction: TranslateDirection;
+  source: string | null | undefined;
+  onTranslated: (v: string) => void;
+};
+
+function FieldLabelRow({
+  htmlFor,
+  label,
+  translate,
+}: {
+  htmlFor: string;
+  label: string;
+  translate?: TranslateProp;
+}) {
+  if (!translate) return <Label htmlFor={htmlFor}>{label}</Label>;
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <Label htmlFor={htmlFor}>{label}</Label>
+      <TranslateButton
+        direction={translate.direction}
+        source={translate.source}
+        onTranslated={translate.onTranslated}
+      />
+    </div>
+  );
+}
+
 function FieldInput({
   id,
   label,
@@ -696,6 +1093,7 @@ function FieldInput({
   error,
   type,
   disabled,
+  translate,
 }: {
   id: string;
   label: string;
@@ -703,10 +1101,11 @@ function FieldInput({
   error?: string;
   type?: string;
   disabled?: boolean;
+  translate?: TranslateProp;
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <Label htmlFor={id}>{label}</Label>
+      <FieldLabelRow htmlFor={id} label={label} translate={translate} />
       <Input id={id} type={type} disabled={disabled} {...register} />
       {error && <p className="text-xs text-[var(--destructive)]">{error}</p>}
     </div>
@@ -718,15 +1117,17 @@ function FieldTextarea({
   label,
   register,
   error,
+  translate,
 }: {
   id: string;
   label: string;
   register: UseFormRegisterReturn;
   error?: string;
+  translate?: TranslateProp;
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <Label htmlFor={id}>{label}</Label>
+      <FieldLabelRow htmlFor={id} label={label} translate={translate} />
       <Textarea id={id} rows={4} {...register} />
       {error && <p className="text-xs text-[var(--destructive)]">{error}</p>}
     </div>
@@ -845,4 +1246,130 @@ function UploadField({
       {error && <p className="text-xs text-[var(--destructive)]">{error}</p>}
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Pagination
+// ---------------------------------------------------------------------------
+
+const PAGE_SIZE_OPTIONS = [6, 12, 24, 48, 96];
+
+function Pagination({
+  page,
+  totalPages,
+  total,
+  limit,
+  onChange,
+  pageSize,
+  onPageSizeChange,
+  isFetching,
+}: {
+  page: number;
+  totalPages: number;
+  total: number;
+  limit: number;
+  onChange: (p: number) => void;
+  pageSize?: number;
+  onPageSizeChange?: (n: number) => void;
+  isFetching?: boolean;
+}) {
+  const { t } = useT();
+  if (total <= 0) return null;
+
+  const safeTotalPages = Math.max(totalPages, 1);
+  const start = (page - 1) * limit + 1;
+  const end = Math.min(page * limit, total);
+  const pageNumbers = buildPageRange(page, safeTotalPages);
+
+  return (
+    <div className="flex flex-col items-center justify-between gap-3 border-t border-[var(--border)] pt-4 sm:flex-row">
+      <div className="flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
+        <span>
+          {start}–{end} / {total}
+          {isFetching && (
+            <Loader2 className="ml-2 inline h-3 w-3 animate-spin" />
+          )}
+        </span>
+        {onPageSizeChange && (
+          <div className="flex items-center gap-1.5">
+            <span>{t("Sahifada")}:</span>
+            <Select
+              value={String(pageSize ?? limit)}
+              onValueChange={(v) => onPageSizeChange(Number(v))}
+            >
+              <SelectTrigger className="h-7 w-[72px] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <SelectItem key={n} value={String(n)} className="text-xs">
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => onChange(page - 1)}
+          disabled={page <= 1}
+          aria-label={t("Oldingi")}
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        {pageNumbers.map((p, i) =>
+          p === "..." ? (
+            <span
+              key={`gap-${i}`}
+              className="px-2 text-xs text-[var(--muted-foreground)]"
+            >
+              …
+            </span>
+          ) : (
+            <Button
+              key={p}
+              variant={p === page ? "default" : "outline"}
+              size="sm"
+              className="min-w-9"
+              onClick={() => onChange(p)}
+            >
+              {p}
+            </Button>
+          )
+        )}
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => onChange(page + 1)}
+          disabled={page >= safeTotalPages}
+          aria-label={t("Keyingi")}
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function buildPageRange(current: number, total: number): (number | "...")[] {
+  const pages: (number | "...")[] = [];
+  const window = 1; // pages around current
+  const add = (p: number | "...") => pages.push(p);
+
+  for (let i = 1; i <= total; i++) {
+    if (
+      i === 1 ||
+      i === total ||
+      (i >= current - window && i <= current + window)
+    ) {
+      add(i);
+    } else if (pages[pages.length - 1] !== "...") {
+      add("...");
+    }
+  }
+  return pages;
 }

@@ -52,6 +52,14 @@ import {
   userInitials,
   usersApi,
 } from "@/features/users/users.api";
+import {
+  TranslateButton,
+  type TranslateDirection,
+} from "@/components/translate-button";
+import { useBiLang, useT } from "@/lib/i18n";
+import { lessonsApi } from "@/features/lessons/lessons.api";
+import { booksApi } from "@/features/books/books.api";
+import { plansApi } from "@/features/plans/plans.api";
 
 // --- schema ---------------------------------------------------------------
 
@@ -94,6 +102,7 @@ const defaultValues: ComposerValues = {
 // --- page -----------------------------------------------------------------
 
 export default function NotificationsPage() {
+  const { t } = useT();
   const [tab, setTab] = useState<TabValue>("user");
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [selectedMany, setSelectedMany] = useState<User[]>([]);
@@ -180,9 +189,9 @@ export default function NotificationsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Xabarnomalar</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Xabarnomalar")}</h1>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Foydalanuvchilarga push-xabar yuborish va statistika
+          {t("Foydalanuvchilarga push-xabar yuborish va statistika")}
         </p>
       </div>
 
@@ -268,17 +277,19 @@ export default function NotificationsPage() {
               className="flex flex-col gap-4"
             >
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Tur" error={errors.type?.message}>
+                <Field label={t("Tur")} error={errors.type?.message}>
                   <Select
                     value={type}
-                    onValueChange={(v) =>
+                    onValueChange={(v) => {
                       setValue("type", v as NotificationType, {
                         shouldValidate: true,
-                      })
-                    }
+                      });
+                      // Reset relatedId when type changes — prior id is irrelevant.
+                      setValue("relatedId", "", { shouldValidate: true });
+                    }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Tanlang" />
+                      <SelectValue placeholder={t("Tanlang")} />
                     </SelectTrigger>
                     <SelectContent>
                       {NOTIFICATION_TYPES.map((t) => (
@@ -289,28 +300,60 @@ export default function NotificationsPage() {
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field
-                  label="Bog'liq ID (ixtiyoriy)"
-                  error={errors.relatedId?.message as string | undefined}
-                  hint="Dars / kitob / obuna kabi obyektga havola"
-                >
-                  <Input
-                    type="number"
-                    min={1}
-                    placeholder="Masalan, 42"
-                    {...register("relatedId")}
-                  />
-                </Field>
+                {hasRelatedEntity(type) && (
+                  <Field
+                    label={relatedFieldLabel(type, t)}
+                    error={errors.relatedId?.message as string | undefined}
+                    hint={t(
+                      "Ro'yxatdan tanlang — ID avtomatik biriktiriladi"
+                    )}
+                  >
+                    <RelatedEntityPicker
+                      type={type}
+                      value={
+                        typeof watch("relatedId") === "number"
+                          ? (watch("relatedId") as number)
+                          : watch("relatedId") === ""
+                            ? null
+                            : Number(watch("relatedId"))
+                      }
+                      onChange={(id) =>
+                        setValue("relatedId", id ?? "", {
+                          shouldValidate: true,
+                          shouldDirty: true,
+                        })
+                      }
+                    />
+                  </Field>
+                )}
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Sarlavha (UZ)" error={errors.titleUz?.message}>
+                <Field
+                  label="Sarlavha (UZ)"
+                  error={errors.titleUz?.message}
+                  translate={{
+                    direction: "ru-uz",
+                    source: watch("titleRu"),
+                    onTranslated: (v) =>
+                      setValue("titleUz", v, { shouldDirty: true }),
+                  }}
+                >
                   <Input
                     placeholder="Yangi dars qo'shildi"
                     {...register("titleUz")}
                   />
                 </Field>
-                <Field label="Sarlavha (RU)" error={errors.titleRu?.message}>
+                <Field
+                  label="Sarlavha (RU)"
+                  error={errors.titleRu?.message}
+                  translate={{
+                    direction: "uz-ru",
+                    source: watch("titleUz"),
+                    onTranslated: (v) =>
+                      setValue("titleRu", v, { shouldDirty: true }),
+                  }}
+                >
                   <Input
                     placeholder="Добавлен новый урок"
                     {...register("titleRu")}
@@ -319,14 +362,32 @@ export default function NotificationsPage() {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Matn (UZ)" error={errors.messageUz?.message}>
+                <Field
+                  label="Matn (UZ)"
+                  error={errors.messageUz?.message}
+                  translate={{
+                    direction: "ru-uz",
+                    source: watch("messageRu"),
+                    onTranslated: (v) =>
+                      setValue("messageUz", v, { shouldDirty: true }),
+                  }}
+                >
                   <Textarea
                     rows={4}
                     placeholder="Xabar matnini kiriting..."
                     {...register("messageUz")}
                   />
                 </Field>
-                <Field label="Matn (RU)" error={errors.messageRu?.message}>
+                <Field
+                  label="Matn (RU)"
+                  error={errors.messageRu?.message}
+                  translate={{
+                    direction: "uz-ru",
+                    source: watch("messageUz"),
+                    onTranslated: (v) =>
+                      setValue("messageRu", v, { shouldDirty: true }),
+                  }}
+                >
                   <Textarea
                     rows={4}
                     placeholder="Введите текст сообщения..."
@@ -838,6 +899,197 @@ function UserRowLine({ user }: { user: User }) {
   );
 }
 
+// --- related-entity picker ------------------------------------------------
+
+function hasRelatedEntity(type: NotificationType): boolean {
+  return type === "LESSON" || type === "BOOK" || type === "SUBSCRIPTION";
+}
+
+function relatedFieldLabel(
+  type: NotificationType,
+  t: (k: string) => string
+): string {
+  if (type === "LESSON") return t("Bog'liq dars");
+  if (type === "BOOK") return t("Bog'liq kitob");
+  if (type === "SUBSCRIPTION") return t("Bog'liq tarif");
+  return t("Bog'liq ob'ekt");
+}
+
+type PickerItem = { id: number; titleUz: string; titleRu: string };
+
+function RelatedEntityPicker({
+  type,
+  value,
+  onChange,
+}: {
+  type: NotificationType;
+  value: number | null;
+  onChange: (id: number | null) => void;
+}) {
+  const { t } = useT();
+  const bi = useBiLang();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const lessonsQ = useQuery({
+    queryKey: ["lessons", "picker"],
+    queryFn: () => lessonsApi.list(),
+    enabled: type === "LESSON",
+  });
+  const booksQ = useQuery({
+    queryKey: ["books", "picker"],
+    queryFn: () => booksApi.list(),
+    enabled: type === "BOOK",
+  });
+  const plansQ = useQuery({
+    queryKey: ["plans", "picker"],
+    queryFn: plansApi.list,
+    enabled: type === "SUBSCRIPTION",
+  });
+
+  const items: PickerItem[] = useMemo(() => {
+    if (type === "LESSON") return lessonsQ.data ?? [];
+    if (type === "BOOK") return booksQ.data ?? [];
+    if (type === "SUBSCRIPTION") return plansQ.data ?? [];
+    return [];
+  }, [type, lessonsQ.data, booksQ.data, plansQ.data]);
+
+  const loading =
+    (type === "LESSON" && lessonsQ.isLoading) ||
+    (type === "BOOK" && booksQ.isLoading) ||
+    (type === "SUBSCRIPTION" && plansQ.isLoading);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (i) =>
+        i.titleUz.toLowerCase().includes(q) ||
+        i.titleRu.toLowerCase().includes(q) ||
+        String(i.id).includes(q)
+    );
+  }, [items, query]);
+
+  const selected = useMemo(
+    () => (value != null ? items.find((i) => i.id === value) : undefined),
+    [items, value]
+  );
+
+  return (
+    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+      <PopoverPrimitive.Trigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "flex w-full items-center justify-between rounded-md border border-[var(--input)] bg-[var(--background)] px-3 py-2 text-left text-sm shadow-sm",
+            "hover:bg-[var(--accent)]/40 focus:outline-none focus:ring-2 focus:ring-[var(--ring)]"
+          )}
+        >
+          {selected ? (
+            <span className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate font-medium">
+                {bi.primary(selected.titleUz, selected.titleRu)}
+              </span>
+              <span className="truncate text-xs text-[var(--muted-foreground)]">
+                #{selected.id}
+                {" · "}
+                {bi.secondary(selected.titleUz, selected.titleRu)}
+              </span>
+            </span>
+          ) : (
+            <span className="text-[var(--muted-foreground)]">
+              {t("Tanlang...")}
+            </span>
+          )}
+          {selected ? (
+            <span
+              role="button"
+              aria-label={t("Tozalash")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange(null);
+              }}
+              className="ml-2 rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+            >
+              <X className="h-4 w-4" />
+            </span>
+          ) : (
+            <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
+          )}
+        </button>
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Content
+          align="start"
+          sideOffset={6}
+          className={cn(
+            "z-50 w-[--radix-popover-trigger-width] rounded-md border border-[var(--border)] bg-[var(--popover)] p-0 text-[var(--popover-foreground)] shadow-md",
+            "data-[state=open]:animate-in data-[state=open]:fade-in-0"
+          )}
+          style={{ minWidth: 320 }}
+        >
+          <div className="flex items-center gap-2 border-b border-[var(--border)] px-3 py-2">
+            <Search className="h-4 w-4 text-[var(--muted-foreground)]" />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("Qidirish...")}
+              className="h-8 w-full bg-transparent text-sm outline-none placeholder:text-[var(--muted-foreground)]"
+            />
+          </div>
+          <div className="max-h-64 overflow-y-auto p-1">
+            {loading ? (
+              <div className="space-y-1 p-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : filtered.length ? (
+              filtered.map((i) => {
+                const isSelected = value === i.id;
+                return (
+                  <button
+                    type="button"
+                    key={i.id}
+                    onClick={() => {
+                      onChange(i.id);
+                      setOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+                      "hover:bg-[var(--accent)]",
+                      isSelected && "bg-[var(--accent)]"
+                    )}
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col leading-tight">
+                      <span className="truncate font-medium">
+                        {bi.primary(i.titleUz, i.titleRu)}
+                      </span>
+                      <span className="truncate text-xs text-[var(--muted-foreground)]">
+                        #{i.id}
+                        {" · "}
+                        {bi.secondary(i.titleUz, i.titleRu)}
+                      </span>
+                    </span>
+                    {isSelected && (
+                      <Check className="h-4 w-4 shrink-0 text-[var(--primary)]" />
+                    )}
+                  </button>
+                );
+              })
+            ) : (
+              <p className="px-3 py-6 text-center text-sm text-[var(--muted-foreground)]">
+                {t("Topilmadi")}
+              </p>
+            )}
+          </div>
+        </PopoverPrimitive.Content>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+  );
+}
+
 // --- helpers --------------------------------------------------------------
 
 function Field({
@@ -845,15 +1097,32 @@ function Field({
   error,
   hint,
   children,
+  translate,
 }: {
   label: string;
   error?: string;
   hint?: string;
   children: React.ReactNode;
+  translate?: {
+    direction: TranslateDirection;
+    source: string | null | undefined;
+    onTranslated: (v: string) => void;
+  };
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <Label>{label}</Label>
+      {translate ? (
+        <div className="flex items-center justify-between gap-2">
+          <Label>{label}</Label>
+          <TranslateButton
+            direction={translate.direction}
+            source={translate.source}
+            onTranslated={translate.onTranslated}
+          />
+        </div>
+      ) : (
+        <Label>{label}</Label>
+      )}
       {children}
       {error ? (
         <p className="text-xs text-[var(--destructive)]">{error}</p>

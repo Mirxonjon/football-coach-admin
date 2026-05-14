@@ -52,6 +52,7 @@ import {
 import { EmptyState } from "@/components/ui/empty-state";
 import { cn, formatDateTime } from "@/lib/utils";
 import { apiErrorMessage } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import {
   UPLOAD_FOLDERS,
   UploadFolder,
@@ -344,6 +345,7 @@ function PresignDialog() {
 type TabKey = "upload" | "session";
 
 export default function UploadsPage() {
+  const { t } = useT();
   const [tab, setTab] = useState<TabKey>("upload");
   const [folder, setFolder] = useState<UploadFolder>("images");
   const [items, setItems] = useState<UploadItemState[]>([]);
@@ -473,10 +475,10 @@ export default function UploadsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold tracking-tight">
-          Fayllar menejeri
+          {t("Fayllar menejeri")}
         </h1>
         <p className="text-sm text-[var(--muted-foreground)]">
-          R2 obyekt xotirasi — fayllarni yuklash, ulashish va o&apos;chirish
+          {t("R2 obyekt xotirasi — fayllarni yuklash, ulashish va o'chirish")}
         </p>
       </div>
 

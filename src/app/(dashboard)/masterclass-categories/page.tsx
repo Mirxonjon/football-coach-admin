@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import {
   ChevronLeft,
   ChevronRight,
-  Dumbbell,
+  Crown,
   Loader2,
   Pencil,
   Plus,
@@ -27,7 +27,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -48,23 +47,18 @@ import {
 import { ImageField } from "@/components/image-field";
 import { TranslateButton } from "@/components/translate-button";
 import {
-  trainingCategoriesApi,
-  type TrainingCategoryBody,
-} from "@/features/training-categories/training-categories.api";
-import { ageCategoriesApi } from "@/features/age-categories/age-categories.api";
-import type { TrainingCategory } from "@/lib/api-types";
+  masterclassCategoriesApi,
+  type MasterclassCategoryBody,
+} from "@/features/masterclass-categories/masterclass-categories.api";
+import type { MasterclassCategory } from "@/lib/api-types";
 import { apiErrorMessage } from "@/lib/api";
 import { useBiLang, useT } from "@/lib/i18n";
-
-const ALL = "__all__";
-const PAGE_SIZE = 12;
 
 const schema = z.object({
   titleUz: z.string().min(1, "Majburiy"),
   titleRu: z.string().min(1, "Majburiy"),
   descriptionUz: z.string().min(1, "Majburiy"),
   descriptionRu: z.string().min(1, "Majburiy"),
-  ageCategoriesId: z.coerce.number().int().positive("Toifani tanlang"),
   imageUrl: z
     .string()
     .trim()
@@ -78,19 +72,13 @@ function CategoryFormDialog({
   open,
   onOpenChange,
 }: {
-  category: TrainingCategory | null;
+  category: MasterclassCategory | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
   const qc = useQueryClient();
-  const bi = useBiLang();
+  const { t } = useT();
   const isEdit = !!category;
-
-  const ageQuery = useQuery({
-    queryKey: ["age-categories"],
-    queryFn: () => ageCategoriesApi.list(),
-  });
-  const ages = ageQuery.data ?? [];
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -99,19 +87,18 @@ function CategoryFormDialog({
       titleRu: category?.titleRu ?? "",
       descriptionUz: category?.descriptionUz ?? "",
       descriptionRu: category?.descriptionRu ?? "",
-      ageCategoriesId: category?.ageCategoriesId ?? 0,
       imageUrl: category?.imageUrl ?? "",
     },
   });
 
   const mutation = useMutation({
-    mutationFn: (body: TrainingCategoryBody) =>
+    mutationFn: (body: MasterclassCategoryBody) =>
       isEdit && category
-        ? trainingCategoriesApi.update(category.id, body)
-        : trainingCategoriesApi.create(body),
+        ? masterclassCategoriesApi.update(category.id, body)
+        : masterclassCategoriesApi.create(body),
     onSuccess: () => {
-      toast.success(isEdit ? "Yangilandi" : "Yaratildi");
-      qc.invalidateQueries({ queryKey: ["training-categories"] });
+      toast.success(t(isEdit ? "Yangilandi" : "Yaratildi"));
+      qc.invalidateQueries({ queryKey: ["masterclass-categories"] });
       onOpenChange(false);
       form.reset();
     },
@@ -123,57 +110,26 @@ function CategoryFormDialog({
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {isEdit
-              ? "Mashg'ulot toifasini tahrirlash"
-              : "Yangi mashg'ulot toifasi"}
+            {t(
+              isEdit
+                ? "Masterklass toifasini tahrirlash"
+                : "Yangi masterklass toifasi"
+            )}
           </DialogTitle>
           <DialogDescription>
-            Yosh toifasi, sarlavha va tavsiflar
+            {t("Sarlavha va tavsifni kiriting")}
           </DialogDescription>
         </DialogHeader>
         <form
           onSubmit={form.handleSubmit((v) =>
-            mutation.mutate(v as unknown as TrainingCategoryBody)
+            mutation.mutate(v as unknown as MasterclassCategoryBody)
           )}
           className="flex flex-col gap-4"
         >
-          <div className="flex flex-col gap-2">
-            <Label>Yosh toifasi</Label>
-            <Select
-              value={
-                form.watch("ageCategoriesId")
-                  ? String(form.watch("ageCategoriesId"))
-                  : ""
-              }
-              onValueChange={(v) =>
-                form.setValue("ageCategoriesId", Number(v), {
-                  shouldDirty: true,
-                  shouldValidate: true,
-                })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Yosh toifasini tanlang" />
-              </SelectTrigger>
-              <SelectContent>
-                {ages.map((a) => (
-                  <SelectItem key={a.id} value={String(a.id)}>
-                    {bi.primary(a.titleUz, a.titleRu)} ({a.minAge}–{a.maxAge})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {form.formState.errors.ageCategoriesId && (
-              <p className="text-xs text-[var(--destructive)]">
-                {form.formState.errors.ageCategoriesId.message}
-              </p>
-            )}
-          </div>
-
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="titleUz">Sarlavha (UZ)</Label>
+                <Label htmlFor="titleUz">{t("Sarlavha (UZ)")}</Label>
                 <TranslateButton
                   direction="ru-uz"
                   source={form.watch("titleRu")}
@@ -191,7 +147,7 @@ function CategoryFormDialog({
             </div>
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="titleRu">Sarlavha (RU)</Label>
+                <Label htmlFor="titleRu">{t("Sarlavha (RU)")}</Label>
                 <TranslateButton
                   source={form.watch("titleUz")}
                   onTranslated={(ru) =>
@@ -211,7 +167,7 @@ function CategoryFormDialog({
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="descriptionUz">Tavsif (UZ)</Label>
+                <Label htmlFor="descriptionUz">{t("Tavsif (UZ)")}</Label>
                 <TranslateButton
                   direction="ru-uz"
                   source={form.watch("descriptionRu")}
@@ -233,7 +189,7 @@ function CategoryFormDialog({
             </div>
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
-                <Label htmlFor="descriptionRu">Tavsif (RU)</Label>
+                <Label htmlFor="descriptionRu">{t("Tavsif (RU)")}</Label>
                 <TranslateButton
                   source={form.watch("descriptionUz")}
                   onTranslated={(ru) =>
@@ -255,13 +211,11 @@ function CategoryFormDialog({
           </div>
 
           <ImageField
-            label="Rasm (ixtiyoriy)"
+            label={t("Rasm (ixtiyoriy)")}
             folder="images"
             value={form.watch("imageUrl") ?? undefined}
             onChange={(url) =>
-              form.setValue("imageUrl", url ?? "", {
-                shouldDirty: true,
-              })
+              form.setValue("imageUrl", url ?? "", { shouldDirty: true })
             }
           />
 
@@ -271,13 +225,11 @@ function CategoryFormDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Bekor qilish
+              {t("Bekor qilish")}
             </Button>
             <Button type="submit" disabled={mutation.isPending}>
-              {mutation.isPending && (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
-              {isEdit ? "Saqlash" : "Yaratish"}
+              {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t(isEdit ? "Saqlash" : "Yaratish")}
             </Button>
           </DialogFooter>
         </form>
@@ -291,7 +243,7 @@ function DeleteDialog({
   open,
   onOpenChange,
 }: {
-  category: TrainingCategory | null;
+  category: MasterclassCategory | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
@@ -301,11 +253,11 @@ function DeleteDialog({
   const mutation = useMutation({
     mutationFn: () => {
       if (!category) throw new Error("No category");
-      return trainingCategoriesApi.remove(category.id);
+      return masterclassCategoriesApi.remove(category.id);
     },
     onSuccess: () => {
       toast.success(t("O'chirildi"));
-      qc.invalidateQueries({ queryKey: ["training-categories"] });
+      qc.invalidateQueries({ queryKey: ["masterclass-categories"] });
       onOpenChange(false);
     },
     onError: (e) => toast.error(apiErrorMessage(e)),
@@ -315,14 +267,15 @@ function DeleteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{t("Toifani o'chirish")}</DialogTitle>
+          <DialogTitle>{t("Masterklass toifasini o'chirish")}</DialogTitle>
           <DialogDescription>
-            {bi.primary(category?.titleUz, category?.titleRu)} — {t("Bu amalni bekor qilib bo'lmaydi.")}
+            {bi.primary(category?.titleUz, category?.titleRu)} —{" "}
+            {t("Bu amalni bekor qilib bo'lmaydi.")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Bekor qilish
+            {t("Bekor qilish")}
           </Button>
           <Button
             variant="destructive"
@@ -330,7 +283,7 @@ function DeleteDialog({
             onClick={() => mutation.mutate()}
           >
             {mutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            O&apos;chirish
+            {t("O'chirish")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -338,234 +291,194 @@ function DeleteDialog({
   );
 }
 
-export default function TrainingCategoriesPage() {
+const PAGE_SIZE = 12;
+
+export default function MasterclassCategoriesPage() {
   const { t } = useT();
   const bi = useBiLang();
-  const [ageFilter, setAgeFilter] = useState<string>(ALL);
-  const [editing, setEditing] = useState<TrainingCategory | null>(null);
+  const [editing, setEditing] = useState<MasterclassCategory | null>(null);
   const [creating, setCreating] = useState(false);
-  const [deleting, setDeleting] = useState<TrainingCategory | null>(null);
+  const [deleting, setDeleting] = useState<MasterclassCategory | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
 
   useEffect(() => {
-    const id = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(id);
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(t);
   }, [search]);
 
-  const ageQuery = useQuery({
-    queryKey: ["age-categories"],
-    queryFn: () => ageCategoriesApi.list(),
-  });
-
-  const ageId = ageFilter === ALL ? undefined : Number(ageFilter);
-
-  // Reset to first page whenever filters or page size change.
   useEffect(() => {
     setPage(1);
-  }, [ageId, debouncedSearch, pageSize]);
+  }, [debouncedSearch, pageSize]);
 
   const listQ = useQuery({
     queryKey: [
-      "training-categories",
-      {
-        ageCategoriesId: ageId ?? null,
-        search: debouncedSearch,
-        page,
-        limit: pageSize,
-      },
+      "masterclass-categories",
+      { search: debouncedSearch, page, limit: pageSize },
     ],
     queryFn: () =>
-      trainingCategoriesApi.listPaginated({
-        ageCategoriesId: ageId,
+      masterclassCategoriesApi.listPaginated({
         search: debouncedSearch || undefined,
         page,
         limit: pageSize,
       }),
     placeholderData: (prev) => prev,
   });
-
   const items = listQ.data?.data ?? [];
   const meta = listQ.data?.meta ?? null;
   const totalPages = meta?.totalPages ?? 1;
   const total = meta?.total ?? items.length;
   const isLoading = listQ.isLoading && !listQ.data;
-  const hasFilters = ageId !== undefined || debouncedSearch.length > 0;
+  const hasFilters = debouncedSearch.length > 0;
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {t("Mashg'ulot toifalari")}
-            </h1>
-            <p className="text-sm text-[var(--muted-foreground)]">
-              {t("Yosh toifasi bo'yicha mashg'ulot turlarini boshqarish")}
-            </p>
-          </div>
-          <Button onClick={() => setCreating(true)}>
-            <Plus className="h-4 w-4" /> {t("Yangi toifa")}
-          </Button>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {t("Masterklass toifalari")}
+          </h1>
+          <p className="text-sm text-[var(--muted-foreground)]">
+            {t("Masterklass toifalarini boshqarish")}
+          </p>
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("Sarlavha bo'yicha izlash...")}
-              className="pl-9 pr-9"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                aria-label={t("Tozalash")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-          <Select value={ageFilter} onValueChange={setAgeFilter}>
-            <SelectTrigger className="sm:w-56">
-              <SelectValue placeholder={t("Yosh toifasi")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>{t("Barcha yosh toifalari")}</SelectItem>
-              {(ageQuery.data ?? []).map((a) => (
-                <SelectItem key={a.id} value={String(a.id)}>
-                  {bi.primary(a.titleUz, a.titleRu)} ({a.minAge}–{a.maxAge})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {hasFilters && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setAgeFilter(ALL);
-                setSearch("");
-              }}
-            >
-              {t("Tozalash")}
-            </Button>
-          )}
-        </div>
+        <Button onClick={() => setCreating(true)}>
+          <Plus className="h-4 w-4" /> {t("Yangi toifa")}
+        </Button>
       </div>
 
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-56 w-full" />
-          ))}
-        </div>
-      ) : items.length === 0 ? (
-        <EmptyState
-          icon={Dumbbell}
-          title={t("Toifalar topilmadi")}
-          description={
-            hasFilters
-              ? t("Filtrlarga mos toifa topilmadi. Filtrlarni tozalab ko'ring.")
-              : t("Filtrlarni o'zgartiring yoki yangi toifa qo'shing")
-          }
-          action={
-            hasFilters ? (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setAgeFilter(ALL);
-                  setSearch("");
-                }}
-              >
-                {t("Filtrlarni tozalash")}
-              </Button>
-            ) : (
-              <Button onClick={() => setCreating(true)}>
-                <Plus className="h-4 w-4" /> {t("Yangi toifa")}
-              </Button>
-            )
-          }
-        />
-      ) : (
-        <>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((c) => (
-            <Card key={c.id} className="flex flex-col overflow-hidden">
-              <div className="relative h-[280px] w-full shrink-0 overflow-hidden bg-[var(--muted)]">
-                {c.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={c.imageUrl}
-                    alt={bi.primary(c.titleUz, c.titleRu)}
-                    className="absolute inset-0 h-full w-full object-cover"
-                  />
+      <Card>
+        <CardHeader className="gap-4">
+          <div className="flex flex-col gap-1">
+            <CardTitle className="text-base">
+              {t("Hammasi")} {items.length ? `(${items.length})` : ""}
+            </CardTitle>
+            <CardDescription>
+              {t("Toifani tahrirlash yoki o'chirish")}
+            </CardDescription>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted-foreground)]" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("Sarlavha bo'yicha izlash...")}
+                className="pl-9 pr-9"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch("")}
+                  aria-label={t("Tozalash")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-56 w-full" />
+              ))}
+            </div>
+          ) : items.length === 0 ? (
+            <EmptyState
+              icon={Crown}
+              title={t(hasFilters ? "Topilmadi" : "Toifalar mavjud emas")}
+              description={
+                hasFilters
+                  ? t(
+                      "Filtrlarga mos toifa topilmadi. Filtrlarni tozalab ko'ring."
+                    )
+                  : t("Birinchi masterklass toifasini qo'shing")
+              }
+              action={
+                hasFilters ? (
+                  <Button variant="outline" onClick={() => setSearch("")}>
+                    {t("Filtrlarni tozalash")}
+                  </Button>
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-[var(--muted-foreground)]">
-                    <Dumbbell className="h-10 w-10" />
+                  <Button onClick={() => setCreating(true)}>
+                    <Plus className="h-4 w-4" /> {t("Yangi toifa")}
+                  </Button>
+                )
+              }
+            />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {items.map((c) => (
+                <Card key={c.id} className="flex flex-col overflow-hidden">
+                  <div className="relative h-[280px] w-full shrink-0 overflow-hidden bg-[var(--muted)]">
+                    {c.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={c.imageUrl}
+                        alt={bi.primary(c.titleUz, c.titleRu)}
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-[var(--muted-foreground)]">
+                        <Crown className="h-10 w-10" />
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+                  <CardHeader>
                     <CardTitle className="truncate text-base">
                       {bi.primary(c.titleUz, c.titleRu)}
                     </CardTitle>
                     <CardDescription className="truncate">
                       {bi.secondary(c.titleUz, c.titleRu)}
                     </CardDescription>
-                  </div>
-                  {c.ageCategory && (
-                    <Badge variant="secondary">
-                      {bi.primary(c.ageCategory.titleUz, c.ageCategory.titleRu)}
-                    </Badge>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent className="flex flex-1 flex-col justify-between gap-3">
-                <p className="line-clamp-3 text-sm text-[var(--muted-foreground)]">
-                  {bi.primary(c.descriptionUz, c.descriptionRu)}
-                </p>
-                <div className="flex justify-end gap-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setEditing(c)}
-                    aria-label="Tahrirlash"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setDeleting(c)}
-                    aria-label="O'chirish"
-                  >
-                    <Trash2 className="h-4 w-4 text-[var(--destructive)]" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  </CardHeader>
+                  <CardContent className="flex flex-1 flex-col justify-between gap-3">
+                    <p className="line-clamp-3 text-sm text-[var(--muted-foreground)]">
+                      {bi.primary(c.descriptionUz, c.descriptionRu)}
+                    </p>
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setEditing(c)}
+                        aria-label={t("Tahrirlash")}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setDeleting(c)}
+                        aria-label={t("O'chirish")}
+                      >
+                        <Trash2 className="h-4 w-4 text-[var(--destructive)]" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
 
-        <Pagination
-          page={meta?.page ?? page}
-          totalPages={totalPages}
-          total={total}
-          limit={meta?.limit ?? pageSize}
-          onChange={(p) => setPage(p)}
-          pageSize={pageSize}
-          onPageSizeChange={setPageSize}
-          isFetching={listQ.isFetching}
-        />
-        </>
-      )}
+          {items.length > 0 && (
+            <Pagination
+              page={meta?.page ?? page}
+              totalPages={totalPages}
+              total={total}
+              limit={meta?.limit ?? pageSize}
+              onChange={(p) => setPage(p)}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
+              isFetching={listQ.isFetching}
+            />
+          )}
+        </CardContent>
+      </Card>
 
       <CategoryFormDialog
         category={null}
@@ -620,7 +533,7 @@ function Pagination({
   const pages = buildPageRange(page, safeTotalPages);
 
   return (
-    <div className="flex flex-col items-center justify-between gap-3 border-t border-[var(--border)] pt-4 sm:flex-row">
+    <div className="mt-4 flex flex-col items-center justify-between gap-3 border-t border-[var(--border)] pt-4 sm:flex-row">
       <div className="flex items-center gap-3 text-xs text-[var(--muted-foreground)]">
         <span>
           {start}–{end} / {total}

@@ -22,6 +22,7 @@ import { formatCurrency, formatNumber } from "@/lib/utils";
 import type { SubscriptionByPlan, SubscriptionPlan } from "@/lib/api-types";
 import { subscriptionsApi } from "@/features/subscriptions/subscriptions.api";
 import { plansApi } from "@/features/plans/plans.api";
+import { useBiLang, useT } from "@/lib/i18n";
 
 function durationLabel(days?: number): string {
   if (!days) return "—";
@@ -36,6 +37,8 @@ type PlanRow = SubscriptionByPlan & {
 };
 
 export default function SubscriptionsPage() {
+  const { t } = useT();
+  const bi = useBiLang();
   const byPlan = useQuery({
     queryKey: ["stats", "subs-by-plan"],
     queryFn: subscriptionsApi.byPlan,
@@ -85,9 +88,9 @@ export default function SubscriptionsPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Obunalar</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Obunalar")}</h1>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Tariflar bo&apos;yicha obuna ko&apos;rsatkichlari va daromad
+          {t("Tariflar bo'yicha obuna ko'rsatkichlari va daromad")}
         </p>
       </div>
 
@@ -131,11 +134,14 @@ export default function SubscriptionsPage() {
           }
           hint={
             rows.length
-              ? rows.reduce(
-                  (m, r) => (r.totalCount > m.totalCount ? r : m),
-                  rows[0]
-                ).titleUz
-              : "Tariflar yo'q"
+              ? (() => {
+                  const top = rows.reduce(
+                    (m, r) => (r.totalCount > m.totalCount ? r : m),
+                    rows[0]
+                  );
+                  return bi.primary(top.titleUz, top.titleRu);
+                })()
+              : t("Tariflar mavjud emas")
           }
           accent="var(--warning)"
           loading={loading}
@@ -179,9 +185,11 @@ export default function SubscriptionsPage() {
                         href="/plans"
                         className="flex flex-col hover:text-[var(--primary)]"
                       >
-                        <span className="font-medium">{r.titleUz}</span>
+                        <span className="font-medium">
+                          {bi.primary(r.titleUz, r.titleRu)}
+                        </span>
                         <span className="text-xs text-[var(--muted-foreground)]">
-                          {r.titleRu}
+                          {bi.secondary(r.titleUz, r.titleRu)}
                         </span>
                       </Link>
                     </TableCell>

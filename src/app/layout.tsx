@@ -11,6 +11,10 @@ export const metadata: Metadata = {
   description: "Football coaching e-learning platform admin panel",
 };
 
+// Blocking script: apply the stored theme before React hydrates to avoid
+// a flash of the wrong color scheme. Must stay inline + synchronous.
+const NO_FLASH_THEME = `(function(){try{var raw=localStorage.getItem('fc_admin_theme');var t='system';if(raw){var p=JSON.parse(raw);t=(p&&p.state&&p.state.theme)||'system';}var d=t==='dark'||(t==='system'&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(d){document.documentElement.classList.add('dark');document.documentElement.style.colorScheme='dark';}else{document.documentElement.style.colorScheme='light';}}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -19,7 +23,11 @@ export default function RootLayout({
       lang="uz"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      /* `lang` is kept in sync with the user's locale by useSyncHtmlLang() in providers. */
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: NO_FLASH_THEME }} />
+      </head>
       <body className="min-h-full flex flex-col">
         <Providers>{children}</Providers>
       </body>

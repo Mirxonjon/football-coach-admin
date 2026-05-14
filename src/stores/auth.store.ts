@@ -13,7 +13,12 @@ export type AdminUser = {
 
 type AuthState = {
   user: AdminUser | null;
-  setAuth: (u: AdminUser, access: string, refresh: string) => void;
+  setAuth: (
+    u: AdminUser,
+    access: string,
+    refresh: string,
+    expiresIn?: number
+  ) => void;
   setUser: (u: AdminUser | null) => void;
   logout: () => void;
 };
@@ -22,9 +27,12 @@ export const useAuth = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
-      setAuth: (user, access, refresh) => {
-        tokenStore.access = access;
-        tokenStore.refresh = refresh;
+      setAuth: (user, access, refresh, expiresIn) => {
+        tokenStore.save({
+          accessToken: access,
+          refreshToken: refresh,
+          expiresIn,
+        });
         set({ user });
       },
       setUser: (user) => set({ user }),

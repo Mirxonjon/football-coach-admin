@@ -25,6 +25,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { statsApi } from "@/features/stats/stats.api";
 import { formatCurrency, formatNumber } from "@/lib/utils";
+import { useBiLang, useT } from "@/lib/i18n";
 
 function KpiCard({
   icon: Icon,
@@ -100,6 +101,8 @@ function SectionCard({
 }
 
 export default function DashboardPage() {
+  const { t } = useT();
+  const bi = useBiLang();
   const overview = useQuery({
     queryKey: ["stats", "overview"],
     queryFn: statsApi.overview,
@@ -126,9 +129,9 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("Dashboard")}</h1>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Platforma ko&apos;rsatkichlari va trendlar
+          {t("Platforma ko'rsatkichlari va trendlar")}
         </p>
       </div>
 
@@ -136,33 +139,33 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           icon={Users}
-          label="Foydalanuvchilar"
+          label={t("Foydalanuvchilar")}
           value={formatNumber(o?.users.total ?? 0)}
-          hint={`+${o?.users.newLast7d ?? 0} oxirgi 7 kunda`}
+          hint={`+${o?.users.newLast7d ?? 0} ${t("oxirgi 7 kunda")}`}
           loading={overview.isLoading}
           accent="var(--primary)"
         />
         <KpiCard
           icon={CreditCard}
-          label="Faol obunalar"
+          label={t("Faol obunalar")}
           value={formatNumber(o?.subscriptions.active ?? 0)}
-          hint={`Jami: ${formatNumber(o?.subscriptions.totalEver ?? 0)}`}
+          hint={`${t("Jami:")} ${formatNumber(o?.subscriptions.totalEver ?? 0)}`}
           loading={overview.isLoading}
           accent="oklch(0.62 0.19 250)"
         />
         <KpiCard
           icon={Wallet}
-          label="Daromad (30 kun)"
+          label={t("Daromad (30 kun)")}
           value={formatCurrency(o?.revenue.last30d ?? 0)}
-          hint={`Jami: ${formatCurrency(o?.revenue.totalSuccess ?? 0)}`}
+          hint={`${t("Jami:")} ${formatCurrency(o?.revenue.totalSuccess ?? 0)}`}
           loading={overview.isLoading}
           accent="var(--success)"
         />
         <KpiCard
           icon={Activity}
-          label="Dars progressi"
+          label={t("Dars progressi")}
           value={formatNumber(o?.engagement.totalLessonProgress ?? 0)}
-          hint={`Yakunlangan: ${formatNumber(o?.engagement.completedLessons ?? 0)}`}
+          hint={`${t("Yakunlangan")}: ${formatNumber(o?.engagement.completedLessons ?? 0)}`}
           loading={overview.isLoading}
           accent="var(--warning)"
         />
@@ -172,25 +175,25 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <KpiCard
           icon={GraduationCap}
-          label="Darslar"
+          label={t("Darslar")}
           value={formatNumber(o?.content.lessons ?? 0)}
           loading={overview.isLoading}
         />
         <KpiCard
           icon={BookOpen}
-          label="Kitoblar"
+          label={t("Kitoblar")}
           value={formatNumber(o?.content.books ?? 0)}
           loading={overview.isLoading}
         />
         <KpiCard
           icon={Sparkles}
-          label="AI suhbatlari"
+          label={t("AI suhbatlari")}
           value={formatNumber(o?.engagement.aiChatsTotal ?? 0)}
           loading={overview.isLoading}
         />
         <KpiCard
           icon={TrendingUp}
-          label="Kutilayotgan tolovlar"
+          label={t("Kutilayotgan tolovlar")}
           value={formatCurrency(o?.revenue.pendingAmount ?? 0)}
           loading={overview.isLoading}
         />
@@ -198,7 +201,7 @@ export default function DashboardPage() {
 
       {/* Charts */}
       <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard title="Daromad (oxirgi 30 kun)" icon={Wallet}>
+        <SectionCard title={t("Daromad (oxirgi 30 kun)")} icon={Wallet}>
           {revenue.isLoading ? (
             <Skeleton className="h-64 w-full" />
           ) : (
@@ -228,7 +231,7 @@ export default function DashboardPage() {
           )}
         </SectionCard>
 
-        <SectionCard title="Yangi foydalanuvchilar (oxirgi 30 kun)" icon={Users}>
+        <SectionCard title={t("Yangi foydalanuvchilar (oxirgi 30 kun)")} icon={Users}>
           {users.isLoading ? (
             <Skeleton className="h-64 w-full" />
           ) : (
@@ -253,7 +256,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard title="Eng faol darslar" icon={GraduationCap}>
+        <SectionCard title={t("Eng faol darslar")} icon={GraduationCap}>
           {topLessons.isLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -272,7 +275,9 @@ export default function DashboardPage() {
                       {i + 1}
                     </span>
                     <div className="flex flex-col">
-                      <span className="text-sm font-medium">{l.titleUz}</span>
+                      <span className="text-sm font-medium">
+                        {bi.primary(l.titleUz, l.titleRu)}
+                      </span>
                       <span className="text-xs text-[var(--muted-foreground)]">
                         {l.categoryTitleUz}
                       </span>
@@ -280,10 +285,10 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-right text-xs">
                     <p className="font-medium">
-                      {formatNumber(l.progressCount)} progress
+                      {formatNumber(l.progressCount)} {t("progress")}
                     </p>
                     <p className="text-[var(--muted-foreground)]">
-                      {formatNumber(l.completedCount)} yakunlangan
+                      {formatNumber(l.completedCount)} {t("yakunlangan")}
                     </p>
                   </div>
                 </li>
@@ -291,12 +296,12 @@ export default function DashboardPage() {
             </ul>
           ) : (
             <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">
-              Hozircha darslar ustida faoliyat yo&apos;q
+              {t("Hozircha darslar ustida faoliyat yo'q")}
             </p>
           )}
         </SectionCard>
 
-        <SectionCard title="Tarif bo‘yicha obunalar" icon={CreditCard}>
+        <SectionCard title={t("Tarif bo‘yicha obunalar")} icon={CreditCard}>
           {plans.isLoading ? (
             <Skeleton className="h-48 w-full" />
           ) : plans.data?.length ? (
@@ -307,9 +312,11 @@ export default function DashboardPage() {
                   className="flex items-center justify-between border-b border-[var(--border)] py-2.5 last:border-0"
                 >
                   <div className="flex flex-col">
-                    <span className="text-sm font-medium">{p.titleUz}</span>
+                    <span className="text-sm font-medium">
+                      {bi.primary(p.titleUz, p.titleRu)}
+                    </span>
                     <span className="text-xs text-[var(--muted-foreground)]">
-                      Faol: {formatNumber(p.activeCount)} · Jami: {formatNumber(p.totalCount)}
+                      {t("Faol:")} {formatNumber(p.activeCount)} · {t("Jami:")} {formatNumber(p.totalCount)}
                     </span>
                   </div>
                   <span className="text-sm font-semibold">
@@ -320,7 +327,7 @@ export default function DashboardPage() {
             </ul>
           ) : (
             <p className="py-8 text-center text-sm text-[var(--muted-foreground)]">
-              Tariflar mavjud emas
+              {t("Tariflar mavjud emas")}
             </p>
           )}
         </SectionCard>

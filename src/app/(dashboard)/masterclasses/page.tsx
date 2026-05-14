@@ -11,7 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  GraduationCap,
+  Film,
   Loader2,
   Pencil,
   Plus,
@@ -49,82 +49,69 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
 import {
-  lessonsApi,
-  type CreateLessonDto,
-  type UpdateLessonDto,
-} from "@/features/lessons/lessons.api";
-import type { TrainingCategory, TrainingLesson } from "@/lib/api-types";
+  masterclassesApi,
+  type CreateMasterclassDto,
+  type UpdateMasterclassDto,
+} from "@/features/masterclasses/masterclasses.api";
+import type { Masterclass, MasterclassCategory } from "@/lib/api-types";
 import { apiErrorMessage } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import { TranslateButton } from "@/components/translate-button";
-import { ageCategoriesApi } from "@/features/age-categories/age-categories.api";
 import { useBiLang, useT } from "@/lib/i18n";
 
 const ALL = "all" as const;
 const PAGE_SIZE = 12;
 
-const lessonSchema = z.object({
-  trainingCategoryId: z.number().int().positive("Toifani tanlang"),
+const masterclassSchema = z.object({
+  masterclassCategoryId: z.number().int().positive("Toifani tanlang"),
   titleUz: z.string().min(2, "Kamida 2 ta belgi"),
   titleRu: z.string().min(2, "Kamida 2 ta belgi"),
-  isFree: z.boolean(),
 });
-type LessonFormValues = z.infer<typeof lessonSchema>;
+type FormValues = z.input<typeof masterclassSchema>;
 
-export default function LessonsPage() {
+export default function MasterclassesPage() {
   const { t } = useT();
   const bi = useBiLang();
   const qc = useQueryClient();
   const [filter, setFilter] = useState<string>(ALL);
-  const [ageFilter, setAgeFilter] = useState<string>(ALL);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<TrainingLesson | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<TrainingLesson | null>(null);
+  const [editTarget, setEditTarget] = useState<Masterclass | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Masterclass | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(PAGE_SIZE);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => clearTimeout(t);
+    const id = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => clearTimeout(id);
   }, [search]);
 
   const filterId = filter === ALL ? undefined : Number(filter);
-  const ageId = ageFilter === ALL ? undefined : Number(ageFilter);
 
-  // Reset to first page whenever filters or page size change.
   useEffect(() => {
     setPage(1);
-  }, [filterId, ageId, debouncedSearch, pageSize]);
+  }, [filterId, debouncedSearch, pageSize]);
 
   const categoriesQ = useQuery({
-    queryKey: ["training-categories"],
-    queryFn: lessonsApi.trainingCategories,
+    queryKey: ["masterclass-categories"],
+    queryFn: () => masterclassesApi.categories(),
   });
 
-  const ageCategoriesQ = useQuery({
-    queryKey: ["age-categories"],
-    queryFn: () => ageCategoriesApi.list(),
-  });
-
-  const lessonsQ = useQuery({
+  const listQ = useQuery({
     queryKey: [
-      "lessons",
+      "masterclasses",
       {
-        trainingCategoryId: filterId ?? null,
-        ageCategoryId: ageId ?? null,
+        masterclassCategoryId: filterId ?? null,
         search: debouncedSearch,
         page,
         limit: pageSize,
       },
     ],
     queryFn: () =>
-      lessonsApi.listPaginated({
-        trainingCategoryId: filterId,
-        ageCategoryId: ageId,
+      masterclassesApi.listPaginated({
+        masterclassCategoryId: filterId,
         search: debouncedSearch || undefined,
         page,
         limit: pageSize,
@@ -132,33 +119,28 @@ export default function LessonsPage() {
     placeholderData: (prev) => prev,
   });
 
-  const lessons = lessonsQ.data?.data ?? [];
-  const meta = lessonsQ.data?.meta ?? null;
+  const items = listQ.data?.data ?? [];
+  const meta = listQ.data?.meta ?? null;
   const totalPages = meta?.totalPages ?? 1;
-  const total = meta?.total ?? lessons.length;
+  const total = meta?.total ?? items.length;
 
-  const hasFilters =
-    filterId !== undefined ||
-    ageId !== undefined ||
-    debouncedSearch.length > 0;
+  const categoriesById = useMemo(() => {
+    const m = new Map<number, MasterclassCategory>();
+    (categoriesQ.data ?? []).forEach((c) => m.set(c.id, c));
+    return m;
+  }, [categoriesQ.data]);
 
+  const hasFilters = filterId !== undefined || debouncedSearch.length > 0;
   const clearFilters = () => {
     setFilter(ALL);
-    setAgeFilter(ALL);
     setSearch("");
   };
 
-  const categoriesById = useMemo(() => {
-    const map = new Map<number, TrainingCategory>();
-    (categoriesQ.data ?? []).forEach((c) => map.set(c.id, c));
-    return map;
-  }, [categoriesQ.data]);
-
   const deleteMut = useMutation({
-    mutationFn: (id: number) => lessonsApi.remove(id),
+    mutationFn: (id: number) => masterclassesApi.remove(id),
     onSuccess: () => {
-      toast.success("Dars o'chirildi");
-      qc.invalidateQueries({ queryKey: ["lessons"] });
+      toast.success(t("O'chirildi"));
+      qc.invalidateQueries({ queryKey: ["masterclasses"] });
       setDeleteTarget(null);
     },
     onError: (e) => toast.error(apiErrorMessage(e)),
@@ -169,14 +151,16 @@ export default function LessonsPage() {
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{t("Darslar")}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {t("Masterklasslar")}
+            </h1>
             <p className="text-sm text-[var(--muted-foreground)]">
-              {t("Mashg'ulot darslarini boshqaring va kontent bloklarini tahrirlang")}
+              {t("Masterklass darslari va videolarini boshqaring")}
             </p>
           </div>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" />
-            {t("Yangi dars")}
+            {t("Yangi masterklass")}
           </Button>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -185,14 +169,14 @@ export default function LessonsPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("UZ yoki RU sarlavha bo'yicha izlash...")}
+              placeholder={t("Masterklass sarlavhasi bo'yicha izlash...")}
               className="pl-9 pr-9"
             />
             {search && (
               <button
                 type="button"
                 onClick={() => setSearch("")}
-                aria-label="Tozalash"
+                aria-label={t("Tozalash")}
                 className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
               >
                 <X className="h-3.5 w-3.5" />
@@ -201,26 +185,13 @@ export default function LessonsPage() {
           </div>
           <Select value={filter} onValueChange={setFilter}>
             <SelectTrigger className="sm:w-56">
-              <SelectValue placeholder={t("Mashg'ulot toifasi")} />
+              <SelectValue placeholder={t("Masterklass toifasi")} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL}>{t("Barcha toifalar")}</SelectItem>
               {(categoriesQ.data ?? []).map((c) => (
                 <SelectItem key={c.id} value={String(c.id)}>
                   {bi.primary(c.titleUz, c.titleRu)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={ageFilter} onValueChange={setAgeFilter}>
-            <SelectTrigger className="sm:w-56">
-              <SelectValue placeholder={t("Yosh toifasi")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>{t("Barcha yoshlar")}</SelectItem>
-              {(ageCategoriesQ.data ?? []).map((a) => (
-                <SelectItem key={a.id} value={String(a.id)}>
-                  {bi.primary(a.titleUz, a.titleRu)} ({a.minAge}–{a.maxAge})
                 </SelectItem>
               ))}
             </SelectContent>
@@ -234,24 +205,26 @@ export default function LessonsPage() {
       </div>
 
       <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]">
-        {lessonsQ.isLoading && !lessonsQ.data ? (
-          <div className="p-4 space-y-2">
+        {listQ.isLoading && !listQ.data ? (
+          <div className="space-y-2 p-4">
             {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className="h-12 w-full" />
             ))}
           </div>
-        ) : lessonsQ.isError ? (
+        ) : listQ.isError ? (
           <div className="p-6 text-sm text-[var(--destructive)]">
-            {apiErrorMessage(lessonsQ.error)}
+            {apiErrorMessage(listQ.error)}
           </div>
-        ) : !lessons.length ? (
+        ) : !items.length ? (
           <EmptyState
-            icon={GraduationCap}
-            title={t("Darslar topilmadi")}
+            icon={Film}
+            title={t("Masterklasslar topilmadi")}
             description={
               hasFilters
-                ? t("Filtrlarga mos dars topilmadi. Filtrlarni tozalab ko'ring.")
-                : t("Hali hech qanday dars yaratilmagan. Boshlash uchun yangi dars qo'shing.")
+                ? t(
+                    "Filtrlarga mos masterklass topilmadi. Filtrlarni tozalab ko'ring."
+                  )
+                : t("Hali hech qanday masterklass yaratilmagan.")
             }
             action={
               hasFilters ? (
@@ -261,7 +234,7 @@ export default function LessonsPage() {
               ) : (
                 <Button onClick={() => setCreateOpen(true)}>
                   <Plus className="h-4 w-4" />
-                  {t("Yangi dars")}
+                  {t("Yangi masterklass")}
                 </Button>
               )
             }
@@ -280,14 +253,14 @@ export default function LessonsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {lessons.map((l) => {
+              {items.map((m) => {
                 const cat =
-                  l.trainingCategory ??
-                  categoriesById.get(l.trainingCategoryId);
+                  m.masterclassCategory ??
+                  categoriesById.get(m.masterclassCategoryId);
                 return (
-                  <TableRow key={l.id}>
+                  <TableRow key={m.id}>
                     <TableCell className="font-mono text-xs text-[var(--muted-foreground)]">
-                      #{l.id}
+                      #{m.id}
                     </TableCell>
                     <TableCell
                       className={
@@ -296,7 +269,7 @@ export default function LessonsPage() {
                           : "text-[var(--muted-foreground)]"
                       }
                     >
-                      {l.titleUz}
+                      {m.titleUz}
                     </TableCell>
                     <TableCell
                       className={
@@ -305,52 +278,45 @@ export default function LessonsPage() {
                           : "text-[var(--muted-foreground)]"
                       }
                     >
-                      {l.titleRu}
+                      {m.titleRu}
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap items-center gap-1">
-                        {cat ? (
-                          <Badge variant="secondary">
-                            {bi.primary(cat.titleUz, cat.titleRu)}
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-[var(--muted-foreground)]">
-                            —
-                          </span>
-                        )}
-                        {l.isFree && (
-                          <Badge className="bg-[oklch(0.72_0.19_145)] text-white">
-                            {t("Bepul")}
-                          </Badge>
-                        )}
-                      </div>
+                      {cat ? (
+                        <Badge variant="secondary">
+                          {bi.primary(cat.titleUz, cat.titleRu)}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          —
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs text-[var(--muted-foreground)]">
-                      {formatDate(l.createdAt)}
+                      {formatDate(m.createdAt)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button asChild variant="ghost" size="icon">
                           <Link
-                            href={`/lessons/${l.id}`}
-                            aria-label={`Darsni ochish #${l.id}`}
+                            href={`/masterclasses/${m.id}`}
+                            aria-label={`${t("Ko'rinish")} #${m.id}`}
                           >
                             <Eye className="h-4 w-4" />
                           </Link>
                         </Button>
                         <Button
-                          variant="ghost"
                           size="icon"
-                          onClick={() => setEditTarget(l)}
-                          aria-label={`Darsni tahrirlash #${l.id}`}
+                          variant="ghost"
+                          onClick={() => setEditTarget(m)}
+                          aria-label={`${t("Tahrirlash")} #${m.id}`}
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
-                          variant="ghost"
                           size="icon"
-                          onClick={() => setDeleteTarget(l)}
-                          aria-label={`Darsni o'chirish #${l.id}`}
+                          variant="ghost"
+                          onClick={() => setDeleteTarget(m)}
+                          aria-label={`${t("O'chirish")} #${m.id}`}
                         >
                           <Trash2 className="h-4 w-4 text-[var(--destructive)]" />
                         </Button>
@@ -364,7 +330,7 @@ export default function LessonsPage() {
         )}
       </div>
 
-      {lessons.length > 0 && (
+      {items.length > 0 && (
         <Pagination
           page={meta?.page ?? page}
           totalPages={totalPages}
@@ -373,24 +339,24 @@ export default function LessonsPage() {
           onChange={(p) => setPage(p)}
           pageSize={pageSize}
           onPageSizeChange={setPageSize}
-          isFetching={lessonsQ.isFetching}
+          isFetching={listQ.isFetching}
         />
       )}
 
-      <LessonFormDialog
+      <MasterclassFormDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
         mode="create"
         categories={categoriesQ.data ?? []}
-        defaultCategoryId={filterId}
       />
 
-      <LessonFormDialog
+      <MasterclassFormDialog
+        key={editTarget?.id}
         open={!!editTarget}
         onOpenChange={(v) => !v && setEditTarget(null)}
         mode="edit"
         categories={categoriesQ.data ?? []}
-        lesson={editTarget ?? undefined}
+        masterclass={editTarget ?? undefined}
       />
 
       <Dialog
@@ -399,28 +365,26 @@ export default function LessonsPage() {
       >
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Darsni o&apos;chirish</DialogTitle>
+            <DialogTitle>{t("Masterklassni o'chirish")}</DialogTitle>
             <DialogDescription>
               {deleteTarget
-                ? `"${bi.primary(deleteTarget.titleUz, deleteTarget.titleRu)}" — ${t("Bu amalni bekor qilib bo'lmaydi.")}`
-                : t("Bu amalni bekor qilib bo'lmaydi.")}
+                ? `"${bi.primary(deleteTarget.titleUz, deleteTarget.titleRu)}" — ${t(
+                    "Bu amalni bekor qilib bo'lmaydi."
+                  )}`
+                : ""}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-              Bekor qilish
+              {t("Bekor qilish")}
             </Button>
             <Button
               variant="destructive"
               disabled={deleteMut.isPending}
-              onClick={() =>
-                deleteTarget && deleteMut.mutate(deleteTarget.id)
-              }
+              onClick={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
             >
-              {deleteMut.isPending && (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              )}
-              O&apos;chirish
+              {deleteMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t("O'chirish")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -429,64 +393,61 @@ export default function LessonsPage() {
   );
 }
 
-function LessonFormDialog({
+// ---------------------------------------------------------------------------
+// Form dialog
+// ---------------------------------------------------------------------------
+
+function MasterclassFormDialog({
   open,
   onOpenChange,
   mode,
   categories,
-  lesson,
-  defaultCategoryId,
+  masterclass,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   mode: "create" | "edit";
-  categories: TrainingCategory[];
-  lesson?: TrainingLesson;
-  defaultCategoryId?: number;
+  categories: MasterclassCategory[];
+  masterclass?: Masterclass;
 }) {
+  const { t } = useT();
   const bi = useBiLang();
   const qc = useQueryClient();
 
-  const form = useForm<LessonFormValues>({
-    resolver: zodResolver(lessonSchema),
+  const form = useForm<FormValues>({
+    resolver: zodResolver(masterclassSchema),
     values:
-      mode === "edit" && lesson
+      mode === "edit" && masterclass
         ? {
-            trainingCategoryId: lesson.trainingCategoryId,
-            titleUz: lesson.titleUz,
-            titleRu: lesson.titleRu,
-            isFree: lesson.isFree ?? false,
+            masterclassCategoryId: masterclass.masterclassCategoryId,
+            titleUz: masterclass.titleUz,
+            titleRu: masterclass.titleRu,
           }
         : {
-            trainingCategoryId: defaultCategoryId ?? 0,
+            masterclassCategoryId: 0,
             titleUz: "",
             titleRu: "",
-            isFree: false,
           },
   });
 
+  const selectedCat = form.watch("masterclassCategoryId");
+
   const createMut = useMutation({
-    mutationFn: (body: CreateLessonDto) => lessonsApi.create(body),
+    mutationFn: (body: CreateMasterclassDto) => masterclassesApi.create(body),
     onSuccess: () => {
-      toast.success("Dars yaratildi");
-      qc.invalidateQueries({ queryKey: ["lessons"] });
-      form.reset({
-        trainingCategoryId: defaultCategoryId ?? 0,
-        titleUz: "",
-        titleRu: "",
-        isFree: false,
-      });
+      toast.success(t("Yaratildi"));
+      qc.invalidateQueries({ queryKey: ["masterclasses"] });
       onOpenChange(false);
     },
     onError: (e) => toast.error(apiErrorMessage(e)),
   });
 
   const updateMut = useMutation({
-    mutationFn: (body: UpdateLessonDto) =>
-      lessonsApi.update(lesson!.id, body),
+    mutationFn: (body: UpdateMasterclassDto) =>
+      masterclassesApi.update(masterclass!.id, body),
     onSuccess: () => {
-      toast.success("Dars yangilandi");
-      qc.invalidateQueries({ queryKey: ["lessons"] });
+      toast.success(t("Yangilandi"));
+      qc.invalidateQueries({ queryKey: ["masterclasses"] });
       onOpenChange(false);
     },
     onError: (e) => toast.error(apiErrorMessage(e)),
@@ -494,38 +455,40 @@ function LessonFormDialog({
 
   const pending = createMut.isPending || updateMut.isPending;
 
-  const onSubmit = form.handleSubmit((values) => {
-    if (mode === "create") createMut.mutate(values);
-    else updateMut.mutate(values);
+  const onSubmit = form.handleSubmit((v) => {
+    const payload: CreateMasterclassDto = {
+      masterclassCategoryId: v.masterclassCategoryId as number,
+      titleUz: v.titleUz,
+      titleRu: v.titleRu,
+    };
+    if (mode === "create") createMut.mutate(payload);
+    else updateMut.mutate(payload);
   });
-
-  const selectedCat = form.watch("trainingCategoryId");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {mode === "create" ? "Yangi dars" : "Darsni tahrirlash"}
+            {t(mode === "create" ? "Yangi masterklass" : "Masterklassni tahrirlash")}
           </DialogTitle>
           <DialogDescription>
-            UZ va RU tilidagi sarlavhani va tegishli mashg&apos;ulot toifasini
-            kiriting.
+            {t("Toifa va sarlavhani kiriting.")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label>Mashg&apos;ulot toifasi</Label>
+            <Label>{t("Masterklass toifasi")}</Label>
             <Select
               value={selectedCat ? String(selectedCat) : ""}
               onValueChange={(v) =>
-                form.setValue("trainingCategoryId", Number(v), {
+                form.setValue("masterclassCategoryId", Number(v), {
                   shouldValidate: true,
                 })
               }
             >
               <SelectTrigger>
-                <SelectValue placeholder="Toifani tanlang" />
+                <SelectValue placeholder={t("Toifani tanlang")} />
               </SelectTrigger>
               <SelectContent>
                 {categories.map((c) => (
@@ -535,67 +498,49 @@ function LessonFormDialog({
                 ))}
               </SelectContent>
             </Select>
-            {form.formState.errors.trainingCategoryId && (
+            {form.formState.errors.masterclassCategoryId && (
               <p className="text-xs text-[var(--destructive)]">
-                {form.formState.errors.trainingCategoryId.message}
+                {form.formState.errors.masterclassCategoryId.message}
               </p>
             )}
           </div>
 
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="titleUz">Sarlavha (UZ)</Label>
-              <TranslateButton
-                direction="ru-uz"
-                source={form.watch("titleRu")}
-                onTranslated={(uz) =>
-                  form.setValue("titleUz", uz, { shouldDirty: true })
-                }
-              />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="titleUz">{t("Sarlavha (UZ)")}</Label>
+                <TranslateButton
+                  direction="ru-uz"
+                  source={form.watch("titleRu")}
+                  onTranslated={(uz) =>
+                    form.setValue("titleUz", uz, { shouldDirty: true })
+                  }
+                />
+              </div>
+              <Input id="titleUz" {...form.register("titleUz")} />
+              {form.formState.errors.titleUz && (
+                <p className="text-xs text-[var(--destructive)]">
+                  {form.formState.errors.titleUz.message}
+                </p>
+              )}
             </div>
-            <Input id="titleUz" {...form.register("titleUz")} />
-            {form.formState.errors.titleUz && (
-              <p className="text-xs text-[var(--destructive)]">
-                {form.formState.errors.titleUz.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="titleRu">Sarlavha (RU)</Label>
-              <TranslateButton
-                direction="uz-ru"
-                source={form.watch("titleUz")}
-                onTranslated={(ru) =>
-                  form.setValue("titleRu", ru, { shouldDirty: true })
-                }
-              />
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="titleRu">{t("Sarlavha (RU)")}</Label>
+                <TranslateButton
+                  source={form.watch("titleUz")}
+                  onTranslated={(ru) =>
+                    form.setValue("titleRu", ru, { shouldDirty: true })
+                  }
+                />
+              </div>
+              <Input id="titleRu" {...form.register("titleRu")} />
+              {form.formState.errors.titleRu && (
+                <p className="text-xs text-[var(--destructive)]">
+                  {form.formState.errors.titleRu.message}
+                </p>
+              )}
             </div>
-            <Input id="titleRu" {...form.register("titleRu")} />
-            {form.formState.errors.titleRu && (
-              <p className="text-xs text-[var(--destructive)]">
-                {form.formState.errors.titleRu.message}
-              </p>
-            )}
-          </div>
-
-          <div className="flex items-start justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--muted)]/40 p-3">
-            <div className="flex flex-col">
-              <Label htmlFor="isFree" className="cursor-pointer">
-                Bepul dars
-              </Label>
-              <p className="text-xs text-[var(--muted-foreground)]">
-                Yoqilganda dars obunasiz ham ko&apos;rsatiladi.
-              </p>
-            </div>
-            <Switch
-              id="isFree"
-              checked={form.watch("isFree")}
-              onCheckedChange={(v) =>
-                form.setValue("isFree", v, { shouldDirty: true })
-              }
-            />
           </div>
 
           <DialogFooter>
@@ -604,11 +549,11 @@ function LessonFormDialog({
               variant="outline"
               onClick={() => onOpenChange(false)}
             >
-              Bekor qilish
+              {t("Bekor qilish")}
             </Button>
             <Button type="submit" disabled={pending}>
               {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-              {mode === "create" ? "Yaratish" : "Saqlash"}
+              {t(mode === "create" ? "Yaratish" : "Saqlash")}
             </Button>
           </DialogFooter>
         </form>

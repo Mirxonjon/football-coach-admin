@@ -1,0 +1,40 @@
+services:
+  admin:
+    container_name: football-coach-admin
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # NEXT_PUBLIC_* values are baked into the client bundle at build time.
+      # Change them in `.env` and rebuild (`docker compose up -d --build admin`).
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4021/v1}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+    image: football-coach-admin:latest
+    restart: unless-stopped
+    ports:
+      - "${ADMIN_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      # Server-side runtime env (also exposed to the client because of the
+      # NEXT_PUBLIC_ prefix — kept here for completeness / SSR consistency).
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4021/v1}
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/login').then(r=>{if(r.status>=500)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    # Uncomment to attach to an existing backend network so the admin container
+    # can reach the API by service name (e.g. `http://api:4021/v1`):
+    # networks:
+    #   - football-coach
+# networks:
+#   football-coach:
+#     external: true

@@ -60,6 +60,7 @@ import {
 import type { User } from "@/lib/api-types";
 import { apiErrorMessage } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
+import { useT } from "@/lib/i18n";
 
 const LIMIT = 20;
 
@@ -260,6 +261,7 @@ function DeleteUserDialog({
 }
 
 export default function UsersPage() {
+  const { t } = useT();
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">(
@@ -293,10 +295,10 @@ export default function UsersPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">
-          Foydalanuvchilar
+          {t("Foydalanuvchilar")}
         </h1>
         <p className="text-sm text-[var(--muted-foreground)]">
-          Ro&apos;yxatdan o&apos;tgan foydalanuvchilarni boshqarish
+          {t("Ro'yxatdan o'tgan foydalanuvchilarni boshqarish")}
         </p>
       </div>
 
@@ -304,10 +306,10 @@ export default function UsersPage() {
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <CardTitle className="text-base">
-              Hammasi {meta ? `(${meta.total})` : ""}
+              {t("Hammasi")} {meta ? `(${meta.total})` : ""}
             </CardTitle>
             <CardDescription>
-              Qidirish, tahrirlash yoki o&apos;chirish
+              {t("Qidirish, tahrirlash yoki o'chirish")}
             </CardDescription>
           </div>
           <form
@@ -323,7 +325,7 @@ export default function UsersPage() {
               <Input
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                placeholder="Ism, email, telefon..."
+                placeholder={t("Ism, email, telefon...")}
                 className="pl-9 sm:w-64"
               />
             </div>
@@ -338,13 +340,13 @@ export default function UsersPage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Barchasi</SelectItem>
-                <SelectItem value="active">Faol</SelectItem>
-                <SelectItem value="inactive">Nofaol</SelectItem>
+                <SelectItem value="all">{t("Barchasi")}</SelectItem>
+                <SelectItem value="active">{t("Faol")}</SelectItem>
+                <SelectItem value="inactive">{t("Nofaol")}</SelectItem>
               </SelectContent>
             </Select>
             <Button type="submit" variant="outline">
-              Qidirish
+              {t("Qidirish")}
             </Button>
           </form>
         </CardHeader>
@@ -358,8 +360,8 @@ export default function UsersPage() {
           ) : users.length === 0 ? (
             <EmptyState
               icon={UsersIcon}
-              title="Foydalanuvchilar topilmadi"
-              description="Filtrlarni o'zgartiring yoki qidiruvni bo'shating"
+              title={t("Foydalanuvchilar topilmadi")}
+              description={t("Filtrlarni o'zgartiring yoki qidiruvni bo'shating")}
             />
           ) : (
             <>
@@ -367,13 +369,13 @@ export default function UsersPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[72px]"></TableHead>
-                    <TableHead>Ism</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Telefon</TableHead>
-                    <TableHead>Rol</TableHead>
-                    <TableHead>Holat</TableHead>
-                    <TableHead>Yaratilgan</TableHead>
-                    <TableHead className="text-right">Amallar</TableHead>
+                    <TableHead>{t("Ism")}</TableHead>
+                    <TableHead>{t("Email")}</TableHead>
+                    <TableHead>{t("Telefon")}</TableHead>
+                    <TableHead>{t("Rol")}</TableHead>
+                    <TableHead>{t("Holat")}</TableHead>
+                    <TableHead>{t("Yaratilgan")}</TableHead>
+                    <TableHead className="text-right">{t("Amallar")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -404,7 +406,7 @@ export default function UsersPage() {
                         <Badge
                           variant={u.isActive ? "success" : "destructive"}
                         >
-                          {u.isActive ? "Faol" : "Nofaol"}
+                          {t(u.isActive ? "Faol" : "Nofaol")}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-[var(--muted-foreground)]">
@@ -438,8 +440,8 @@ export default function UsersPage() {
               {meta && meta.totalPages > 1 && (
                 <div className="mt-4 flex items-center justify-between text-sm">
                   <span className="text-[var(--muted-foreground)]">
-                    Sahifa {meta.page} / {meta.totalPages}
-                    {isFetching && " · yangilanmoqda..."}
+                    {t("Sahifa")} {meta.page} / {meta.totalPages}
+                    {isFetching && ` · ${t("yangilanmoqda...")}`}
                   </span>
                   <div className="flex gap-2">
                     <Button
@@ -448,7 +450,7 @@ export default function UsersPage() {
                       disabled={meta.page <= 1}
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                     >
-                      <ChevronLeft className="h-4 w-4" /> Oldingi
+                      <ChevronLeft className="h-4 w-4" /> {t("Oldingi")}
                     </Button>
                     <Button
                       size="sm"
@@ -456,7 +458,7 @@ export default function UsersPage() {
                       disabled={meta.page >= meta.totalPages}
                       onClick={() => setPage((p) => p + 1)}
                     >
-                      Keyingi <ChevronRight className="h-4 w-4" />
+                      {t("Keyingi")} <ChevronRight className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
