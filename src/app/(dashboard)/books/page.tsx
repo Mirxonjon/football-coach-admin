@@ -56,7 +56,7 @@ import {
 import {
   bookEmbedApi,
   totalChunks,
-  type BookEmbedResult,
+  type BookEmbedStatus,
 } from "@/features/books/book-embed.api";
 import {
   uploadAsset,
@@ -153,9 +153,9 @@ export default function BooksPage() {
   const total = meta?.total ?? books.length;
 
   // ── Embedding status (per-book) ─────────────────────────────────────────
-  // null = not loaded yet (show "..."), undefined = entry deleted on error.
+  // null = not loaded yet (show "..."), value = fresh status.
   const [embedStatus, setEmbedStatus] = useState<
-    Record<number, BookEmbedResult | null>
+    Record<number, BookEmbedStatus | null>
   >({});
   const [embedBusy, setEmbedBusy] = useState<Record<number, boolean>>({});
   const [bulkProgress, setBulkProgress] = useState<{
@@ -178,7 +178,7 @@ export default function BooksPage() {
         bookEmbedApi
           .getStatus(b.id)
           .then((r) => ({ id: b.id, r }))
-          .catch(() => ({ id: b.id, r: null as BookEmbedResult | null }))
+          .catch(() => ({ id: b.id, r: null as BookEmbedStatus | null }))
       )
     ).then((results) => {
       if (cancelled) return;
@@ -208,10 +208,22 @@ export default function BooksPage() {
     setEmbedBusy((prev) => ({ ...prev, [bookId]: true }));
     try {
       const res = await bookEmbedApi.reembed(bookId);
-      const uz = res.languages.uz?.chunks ?? 0;
-      const ru = res.languages.ru?.chunks ?? 0;
-      toast.success(`Embedded — UZ: ${uz}, RU: ${ru} chunk`);
-      setEmbedStatus((prev) => ({ ...prev, [bookId]: res }));
+      // Backend now returns one PDF / one detected language.
+      toast.success(
+        `Embedded — ${res.language.toUpperCase()}: ${res.chunks} chunk, ${res.pages} sahifa`
+      );
+      // POST response → translate into the GET status shape so the UI updates
+      // without a second round-trip.
+      setEmbedStatus((prev) => ({
+        ...prev,
+        [bookId]: {
+          bookId: res.bookId,
+          language: res.language,
+          chunks: res.chunks,
+          total: res.chunks,
+          latest: new Date().toISOString(),
+        },
+      }));
       return true;
     } catch (e) {
       toast.error(apiErrorMessage(e));
@@ -517,7 +529,7 @@ function BookCard({
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  embedStatus?: BookEmbedResult | null;
+  embedStatus?: BookEmbedStatus | null;
   embedBusy?: boolean;
   onReembed?: () => void;
   onRefreshStatus?: () => void;
@@ -529,9 +541,8 @@ function BookCard({
 
   // null = still loading, undefined = no status loader wired in.
   const embedLoading = embedStatus === null;
-  const uzChunks = embedStatus?.languages.uz?.chunks ?? 0;
-  const ruChunks = embedStatus?.languages.ru?.chunks ?? 0;
-  const hasAnyEmbed = totalChunks(embedStatus ?? undefined) > 0;
+  const embedChunks = totalChunks(embedStatus);
+  const embedLanguage = embedStatus?.language ?? null;
 
   return (
     <Card
@@ -589,19 +600,16 @@ function BookCard({
               <Loader2 className="mr-1 h-3 w-3 animate-spin" />
               ...
             </Badge>
-          ) : hasAnyEmbed ? (
-            <>
-              {uzChunks > 0 && (
-                <Badge className="bg-[oklch(0.72_0.19_145)] text-[10px] text-white">
-                  UZ: {uzChunks}
-                </Badge>
-              )}
-              {ruChunks > 0 && (
-                <Badge className="bg-[oklch(0.62_0.19_260)] text-[10px] text-white">
-                  RU: {ruChunks}
-                </Badge>
-              )}
-            </>
+          ) : embedChunks > 0 ? (
+            <Badge
+              className={
+                embedLanguage === "ru"
+                  ? "bg-[oklch(0.62_0.19_260)] text-[10px] text-white"
+                  : "bg-[oklch(0.72_0.19_145)] text-[10px] text-white"
+              }
+            >
+              {(embedLanguage ?? "uz").toUpperCase()}: {embedChunks}
+            </Badge>
           ) : (
             <Badge variant="outline" className="text-[10px]">
               Embed qilinmagan
@@ -879,8 +887,6 @@ const bookSchema = z
     descriptionUz: z.string().min(2),
     descriptionRu: z.string().min(2),
     fileUrl: z.string().url("PDF fayl URL majburiy"),
-    fileUrlUz: z.string().url().optional().or(z.literal("")),
-    fileUrlRu: z.string().url().optional().or(z.literal("")),
     coverImageUrl: z.string().url().optional().or(z.literal("")),
     tacticHintImg: z.string().url().optional().or(z.literal("")),
     basePrice: z.number().nonnegative(),
@@ -932,8 +938,6 @@ function BookFormDialog({
           descriptionUz: book.descriptionUz,
           descriptionRu: book.descriptionRu,
           fileUrl: book.fileUrl,
-          fileUrlUz: book.fileUrlUz ?? "",
-          fileUrlRu: book.fileUrlRu ?? "",
           coverImageUrl: book.coverImageUrl ?? "",
           tacticHintImg: book.tacticHintImg ?? "",
           basePrice: book.basePrice,
@@ -948,8 +952,6 @@ function BookFormDialog({
           descriptionUz: "",
           descriptionRu: "",
           fileUrl: "",
-          fileUrlUz: "",
-          fileUrlRu: "",
           coverImageUrl: "",
           tacticHintImg: "",
           basePrice: 0,
@@ -1031,8 +1033,6 @@ function BookFormDialog({
       descriptionUz: values.descriptionUz,
       descriptionRu: values.descriptionRu,
       fileUrl: values.fileUrl,
-      fileUrlUz: values.fileUrlUz || null,
-      fileUrlRu: values.fileUrlRu || null,
       coverImageUrl: values.coverImageUrl || null,
       tacticHintImg: values.tacticHintImg || null,
       basePrice: Number(values.basePrice) || 0,
@@ -1158,19 +1158,25 @@ function BookFormDialog({
               preview="image"
               icon={<ImagePlus className="h-4 w-4" />}
             />
-            <UploadField
-              label="PDF fayl *"
-              folder="books"
-              accept="application/pdf"
-              value={watched.fileUrl}
-              onChange={(v) =>
-                form.setValue("fileUrl", v, { shouldValidate: true })
-              }
-              preview="file"
-              required
-              error={form.formState.errors.fileUrl?.message}
-              icon={<FileText className="h-4 w-4" />}
-            />
+            <div className="flex flex-col gap-1">
+              <UploadField
+                label="PDF fayl *"
+                folder="books"
+                accept="application/pdf"
+                value={watched.fileUrl}
+                onChange={(v) =>
+                  form.setValue("fileUrl", v, { shouldValidate: true })
+                }
+                preview="file"
+                required
+                error={form.formState.errors.fileUrl?.message}
+                icon={<FileText className="h-4 w-4" />}
+              />
+              <p className="text-[10px] text-[var(--muted-foreground)]">
+                Asl tilda yuklang (UZ yoki RU bo&apos;lishi mumkin). AI
+                murabbiy avtomatik aniqlab, ikkala tilda javob beradi.
+              </p>
+            </div>
             <UploadField
               label="Taktik maslahat rasmi"
               folder="images"
@@ -1182,56 +1188,6 @@ function BookFormDialog({
               preview="image"
               icon={<ImagePlus className="h-4 w-4" />}
             />
-          </div>
-
-          {/* AI / Embedding PDF uploads (per-language, optional) */}
-          <div className="rounded-md border border-[var(--border)] bg-[var(--muted)]/20 p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-[var(--primary)]" />
-              <h4 className="text-sm font-semibold">
-                AI suhbat uchun PDF (ixtiyoriy)
-              </h4>
-            </div>
-            <p className="mb-3 text-xs text-[var(--muted-foreground)]">
-              Bu fayllar foydalanuvchining kitob bilan AI suhbati uchun
-              embedding qilinadi. Saqlagandan keyin kitob kartasidagi{" "}
-              <strong>♻ Re-embed</strong> tugmasini bosing. Agar bo&apos;sh
-              qoldirilsa, asosiy <code>fileUrl</code> ishlatiladi.
-            </p>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1">
-                <UploadField
-                  label="UZ tilidagi PDF (ixtiyoriy)"
-                  folder="books"
-                  accept="application/pdf"
-                  value={watched.fileUrlUz ?? ""}
-                  onChange={(v) =>
-                    form.setValue("fileUrlUz", v, { shouldValidate: true })
-                  }
-                  preview="file"
-                  icon={<FileText className="h-4 w-4" />}
-                />
-                <p className="text-[10px] text-[var(--muted-foreground)]">
-                  AI o&apos;zbek tilidagi savollarga shu fayldan javob beradi.
-                </p>
-              </div>
-              <div className="flex flex-col gap-1">
-                <UploadField
-                  label="RU tilidagi PDF (ixtiyoriy)"
-                  folder="books"
-                  accept="application/pdf"
-                  value={watched.fileUrlRu ?? ""}
-                  onChange={(v) =>
-                    form.setValue("fileUrlRu", v, { shouldValidate: true })
-                  }
-                  preview="file"
-                  icon={<FileText className="h-4 w-4" />}
-                />
-                <p className="text-[10px] text-[var(--muted-foreground)]">
-                  AI rus tilidagi savollarga shu fayldan javob beradi.
-                </p>
-              </div>
-            </div>
           </div>
 
           {/* Pricing */}

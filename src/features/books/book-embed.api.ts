@@ -2,16 +2,24 @@ import { api, apiDelete, apiGet, unwrap } from "@/lib/api";
 
 export type BookEmbedLanguage = "uz" | "ru";
 
-export type BookEmbedLangStat = {
+/** POST /admin/books/:id/embed result — one PDF, auto-detected language. */
+export type BookReembedResult = {
+  bookId: number;
+  language: BookEmbedLanguage;
   chunks: number;
-  tokens?: number;
-  latest?: string;
+  tokens: number;
+  pages: number;
 };
 
-export type BookEmbedResult = {
+/** GET /admin/books/:id/embed/status — null language = not embedded yet. */
+export type BookEmbedStatus = {
   bookId: number;
-  languages: Partial<Record<BookEmbedLanguage, BookEmbedLangStat>>;
-  total?: { chunks: number; tokens: number };
+  language: BookEmbedLanguage | null;
+  chunks: number;
+  latest: string | null;
+  total: number;
+  /** Legacy fallback when old 2-language data is still in the index. */
+  breakdown?: Record<string, { chunks: number; latest: string | null }>;
 };
 
 export type BookEmbedDeleteResult = {
@@ -24,26 +32,31 @@ export type BookEmbedDeleteResult = {
 const REEMBED_TIMEOUT_MS = 120_000;
 
 export const bookEmbedApi = {
-  reembed: async (bookId: number): Promise<BookEmbedResult> => {
+  reembed: async (bookId: number): Promise<BookReembedResult> => {
     const { data } = await api.post(
       `/admin/books/${bookId}/embed`,
       undefined,
       { timeout: REEMBED_TIMEOUT_MS }
     );
-    return unwrap<BookEmbedResult>(data);
+    return unwrap<BookReembedResult>(data);
   },
 
   getStatus: (bookId: number) =>
-    apiGet<BookEmbedResult>(`/admin/books/${bookId}/embed/status`),
+    apiGet<BookEmbedStatus>(`/admin/books/${bookId}/embed/status`),
 
   remove: (bookId: number) =>
     apiDelete<BookEmbedDeleteResult>(`/admin/books/${bookId}/embed`),
 };
 
-export function totalChunks(r: BookEmbedResult | undefined): number {
+/** Total chunks across legacy breakdown or the new flat shape. */
+export function totalChunks(r: BookEmbedStatus | undefined | null): number {
   if (!r) return 0;
-  if (r.total?.chunks != null) return r.total.chunks;
-  return (
-    (r.languages.uz?.chunks ?? 0) + (r.languages.ru?.chunks ?? 0)
-  );
+  if (typeof r.total === "number" && r.total > 0) return r.total;
+  if (r.breakdown) {
+    return Object.values(r.breakdown).reduce(
+      (sum, b) => sum + (b?.chunks ?? 0),
+      0
+    );
+  }
+  return r.chunks ?? 0;
 }
