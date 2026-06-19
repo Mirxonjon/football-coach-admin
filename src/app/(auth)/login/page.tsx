@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Loader2, Shield } from "lucide-react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -124,6 +124,17 @@ export default function LoginPage() {
 
   const anyPending = mutation.isPending || googleMutation.isPending;
 
+  // Stable ref so `<GoogleSignInButton>`'s init effect doesn't re-run on every
+  // render (avoids "google.accounts.id.initialize() called multiple times").
+  const googleMutateRef = useRef(googleMutation.mutate);
+  useEffect(() => {
+    googleMutateRef.current = googleMutation.mutate;
+  }, [googleMutation.mutate]);
+  const handleGoogleCredential = useCallback(
+    (idToken: string) => googleMutateRef.current(idToken),
+    []
+  );
+
   return (
     <Card className="w-full max-w-md border-[var(--border)] shadow-xl backdrop-blur-sm">
       <CardHeader className="text-center">
@@ -137,7 +148,8 @@ export default function LoginPage() {
         <div className="flex flex-col items-center gap-2">
           <GoogleSignInButton
             disabled={anyPending}
-            onCredential={(idToken) => googleMutation.mutate(idToken)}
+            autoSelect={false}
+            onCredential={handleGoogleCredential}
           />
           {googleMutation.isPending && (
             <p className="flex items-center gap-2 text-xs text-[var(--muted-foreground)]">

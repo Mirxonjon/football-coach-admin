@@ -16,7 +16,9 @@ import {
   Loader2,
   Pencil,
   Plus,
+  RefreshCcw,
   Search,
+  Sparkles,
   Trash2,
   Upload,
   X,
@@ -51,6 +53,11 @@ import {
   type CreateBookDto,
   type UpdateBookDto,
 } from "@/features/books/books.api";
+import {
+  bookEmbedApi,
+  totalChunks,
+  type BookEmbedResult,
+} from "@/features/books/book-embed.api";
 import {
   uploadAsset,
   type UploadFolder,
@@ -144,6 +151,107 @@ export default function BooksPage() {
   const meta = booksQ.data?.meta ?? null;
   const totalPages = meta?.totalPages ?? 1;
   const total = meta?.total ?? books.length;
+
+  // ── Embedding status (per-book) ─────────────────────────────────────────
+  // null = not loaded yet (show "..."), undefined = entry deleted on error.
+  const [embedStatus, setEmbedStatus] = useState<
+    Record<number, BookEmbedResult | null>
+  >({});
+  const [embedBusy, setEmbedBusy] = useState<Record<number, boolean>>({});
+  const [bulkProgress, setBulkProgress] = useState<{
+    done: number;
+    total: number;
+  } | null>(null);
+
+  // Refetch statuses for the currently visible page of books in parallel.
+  useEffect(() => {
+    if (books.length === 0) return;
+    let cancelled = false;
+    // Mark all visible rows as loading.
+    setEmbedStatus((prev) => {
+      const next = { ...prev };
+      for (const b of books) if (!(b.id in next)) next[b.id] = null;
+      return next;
+    });
+    void Promise.all(
+      books.map((b) =>
+        bookEmbedApi
+          .getStatus(b.id)
+          .then((r) => ({ id: b.id, r }))
+          .catch(() => ({ id: b.id, r: null as BookEmbedResult | null }))
+      )
+    ).then((results) => {
+      if (cancelled) return;
+      setEmbedStatus((prev) => {
+        const next = { ...prev };
+        for (const { id, r } of results) next[id] = r;
+        return next;
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Re-run whenever the list of book ids on the current page changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [books.map((b) => b.id).join(",")]);
+
+  const refreshEmbedStatus = async (bookId: number) => {
+    try {
+      const r = await bookEmbedApi.getStatus(bookId);
+      setEmbedStatus((prev) => ({ ...prev, [bookId]: r }));
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const reembedBook = async (bookId: number): Promise<boolean> => {
+    setEmbedBusy((prev) => ({ ...prev, [bookId]: true }));
+    try {
+      const res = await bookEmbedApi.reembed(bookId);
+      const uz = res.languages.uz?.chunks ?? 0;
+      const ru = res.languages.ru?.chunks ?? 0;
+      toast.success(`Embedded — UZ: ${uz}, RU: ${ru} chunk`);
+      setEmbedStatus((prev) => ({ ...prev, [bookId]: res }));
+      return true;
+    } catch (e) {
+      toast.error(apiErrorMessage(e));
+      return false;
+    } finally {
+      setEmbedBusy((prev) => ({ ...prev, [bookId]: false }));
+    }
+  };
+
+  const handleReembed = async (bookId: number) => {
+    const ok = window.confirm(
+      "Bu kitobni qaytadan embedding qilish? ~30-90 sek oladi. Eski chunklar o'chiriladi."
+    );
+    if (!ok) return;
+    await reembedBook(bookId);
+  };
+
+  const handleBulkReembed = async () => {
+    if (books.length === 0) return;
+    const ok = window.confirm(
+      `Hozirgi sahifadagi ${books.length} ta kitobni navbat bilan embedding qilish? Har biri ~60 sek davom etishi mumkin.`
+    );
+    if (!ok) return;
+    setBulkProgress({ done: 0, total: books.length });
+    let success = 0;
+    let failed = 0;
+    for (let i = 0; i < books.length; i++) {
+      const b = books[i];
+      // Strict sequential — Gemini free tier ~15 RPM, parallel would 429.
+      // eslint-disable-next-line no-await-in-loop
+      const okOne = await reembedBook(b.id);
+      if (okOne) success++;
+      else failed++;
+      setBulkProgress({ done: i + 1, total: books.length });
+    }
+    setBulkProgress(null);
+    toast.success(
+      `Bulk embedding tugadi — ${success} muvaffaqiyatli, ${failed} xato`
+    );
+  };
 
   const hasFilters =
     filterId !== undefined ||
@@ -272,6 +380,26 @@ export default function BooksPage() {
         />
       ) : (
         <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-[var(--muted-foreground)]">
+              {bulkProgress
+                ? `Embedding ${bulkProgress.done} / ${bulkProgress.total}...`
+                : `${books.length} ta kitob ko'rsatilmoqda`}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBulkReembed}
+              disabled={bulkProgress !== null}
+            >
+              {bulkProgress ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              Barchasini re-embed qilish
+            </Button>
+          </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {books.map((b) => (
               <BookCard
@@ -281,6 +409,10 @@ export default function BooksPage() {
                 onView={() => setViewTarget(b)}
                 onEdit={() => setEditTarget(b)}
                 onDelete={() => setDeleteTarget(b)}
+                embedStatus={embedStatus[b.id]}
+                embedBusy={!!embedBusy[b.id]}
+                onReembed={() => handleReembed(b.id)}
+                onRefreshStatus={() => refreshEmbedStatus(b.id)}
               />
             ))}
           </div>
@@ -375,17 +507,31 @@ function BookCard({
   onView,
   onEdit,
   onDelete,
+  embedStatus,
+  embedBusy,
+  onReembed,
+  onRefreshStatus,
 }: {
   book: Book;
   category?: BookCategory;
   onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  embedStatus?: BookEmbedResult | null;
+  embedBusy?: boolean;
+  onReembed?: () => void;
+  onRefreshStatus?: () => void;
 }) {
   const { t } = useT();
   const bi = useBiLang();
   const finalPrice = computeFinalPrice(book);
   const hasDiscount = finalPrice !== book.basePrice;
+
+  // null = still loading, undefined = no status loader wired in.
+  const embedLoading = embedStatus === null;
+  const uzChunks = embedStatus?.languages.uz?.chunks ?? 0;
+  const ruChunks = embedStatus?.languages.ru?.chunks ?? 0;
+  const hasAnyEmbed = totalChunks(embedStatus ?? undefined) > 0;
 
   return (
     <Card
@@ -432,6 +578,47 @@ function BookCard({
             </p>
           )}
         </div>
+
+        <div
+          className="flex flex-wrap items-center gap-1"
+          onClick={(e) => e.stopPropagation()}
+          title="Embedding statusi"
+        >
+          {embedLoading ? (
+            <Badge variant="outline" className="text-[10px]">
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              ...
+            </Badge>
+          ) : hasAnyEmbed ? (
+            <>
+              {uzChunks > 0 && (
+                <Badge className="bg-[oklch(0.72_0.19_145)] text-[10px] text-white">
+                  UZ: {uzChunks}
+                </Badge>
+              )}
+              {ruChunks > 0 && (
+                <Badge className="bg-[oklch(0.62_0.19_260)] text-[10px] text-white">
+                  RU: {ruChunks}
+                </Badge>
+              )}
+            </>
+          ) : (
+            <Badge variant="outline" className="text-[10px]">
+              Embed qilinmagan
+            </Badge>
+          )}
+          {onRefreshStatus && !embedLoading && (
+            <button
+              type="button"
+              onClick={onRefreshStatus}
+              aria-label="Statusni yangilash"
+              className="rounded p-0.5 text-[var(--muted-foreground)] hover:bg-[var(--muted)]"
+            >
+              <RefreshCcw className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+
         <div className="flex items-end justify-between gap-2">
           <div>
             {hasDiscount && (
@@ -443,7 +630,23 @@ function BookCard({
               {formatCurrency(finalPrice)}
             </p>
           </div>
-          <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+          <div className="flex flex-wrap gap-1" onClick={(e) => e.stopPropagation()}>
+            {onReembed && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onReembed}
+                disabled={embedBusy}
+                title="Re-embed (PDF ni AI vector DB ga qayta yuklash)"
+              >
+                {embedBusy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                Re-embed
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -676,6 +879,8 @@ const bookSchema = z
     descriptionUz: z.string().min(2),
     descriptionRu: z.string().min(2),
     fileUrl: z.string().url("PDF fayl URL majburiy"),
+    fileUrlUz: z.string().url().optional().or(z.literal("")),
+    fileUrlRu: z.string().url().optional().or(z.literal("")),
     coverImageUrl: z.string().url().optional().or(z.literal("")),
     tacticHintImg: z.string().url().optional().or(z.literal("")),
     basePrice: z.number().nonnegative(),
@@ -727,6 +932,8 @@ function BookFormDialog({
           descriptionUz: book.descriptionUz,
           descriptionRu: book.descriptionRu,
           fileUrl: book.fileUrl,
+          fileUrlUz: book.fileUrlUz ?? "",
+          fileUrlRu: book.fileUrlRu ?? "",
           coverImageUrl: book.coverImageUrl ?? "",
           tacticHintImg: book.tacticHintImg ?? "",
           basePrice: book.basePrice,
@@ -741,6 +948,8 @@ function BookFormDialog({
           descriptionUz: "",
           descriptionRu: "",
           fileUrl: "",
+          fileUrlUz: "",
+          fileUrlRu: "",
           coverImageUrl: "",
           tacticHintImg: "",
           basePrice: 0,
@@ -783,7 +992,9 @@ function BookFormDialog({
   const createMut = useMutation({
     mutationFn: (body: CreateBookDto) => booksApi.create(body),
     onSuccess: () => {
-      toast.success("Kitob yaratildi");
+      toast.success(
+        "Saqlandi. Embedding qilish uchun '♻ Re-embed' tugmasini bosing."
+      );
       qc.invalidateQueries({ queryKey: ["books"] });
       onOpenChange(false);
     },
@@ -793,7 +1004,9 @@ function BookFormDialog({
   const updateMut = useMutation({
     mutationFn: (body: UpdateBookDto) => booksApi.update(book!.id, body),
     onSuccess: () => {
-      toast.success("Kitob yangilandi");
+      toast.success(
+        "Saqlandi. Embedding qilish uchun '♻ Re-embed' tugmasini bosing."
+      );
       qc.invalidateQueries({ queryKey: ["books"] });
       onOpenChange(false);
     },
@@ -818,6 +1031,8 @@ function BookFormDialog({
       descriptionUz: values.descriptionUz,
       descriptionRu: values.descriptionRu,
       fileUrl: values.fileUrl,
+      fileUrlUz: values.fileUrlUz || null,
+      fileUrlRu: values.fileUrlRu || null,
       coverImageUrl: values.coverImageUrl || null,
       tacticHintImg: values.tacticHintImg || null,
       basePrice: Number(values.basePrice) || 0,
@@ -967,6 +1182,56 @@ function BookFormDialog({
               preview="image"
               icon={<ImagePlus className="h-4 w-4" />}
             />
+          </div>
+
+          {/* AI / Embedding PDF uploads (per-language, optional) */}
+          <div className="rounded-md border border-[var(--border)] bg-[var(--muted)]/20 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-[var(--primary)]" />
+              <h4 className="text-sm font-semibold">
+                AI suhbat uchun PDF (ixtiyoriy)
+              </h4>
+            </div>
+            <p className="mb-3 text-xs text-[var(--muted-foreground)]">
+              Bu fayllar foydalanuvchining kitob bilan AI suhbati uchun
+              embedding qilinadi. Saqlagandan keyin kitob kartasidagi{" "}
+              <strong>♻ Re-embed</strong> tugmasini bosing. Agar bo&apos;sh
+              qoldirilsa, asosiy <code>fileUrl</code> ishlatiladi.
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <UploadField
+                  label="UZ tilidagi PDF (ixtiyoriy)"
+                  folder="books"
+                  accept="application/pdf"
+                  value={watched.fileUrlUz ?? ""}
+                  onChange={(v) =>
+                    form.setValue("fileUrlUz", v, { shouldValidate: true })
+                  }
+                  preview="file"
+                  icon={<FileText className="h-4 w-4" />}
+                />
+                <p className="text-[10px] text-[var(--muted-foreground)]">
+                  AI o&apos;zbek tilidagi savollarga shu fayldan javob beradi.
+                </p>
+              </div>
+              <div className="flex flex-col gap-1">
+                <UploadField
+                  label="RU tilidagi PDF (ixtiyoriy)"
+                  folder="books"
+                  accept="application/pdf"
+                  value={watched.fileUrlRu ?? ""}
+                  onChange={(v) =>
+                    form.setValue("fileUrlRu", v, { shouldValidate: true })
+                  }
+                  preview="file"
+                  icon={<FileText className="h-4 w-4" />}
+                />
+                <p className="text-[10px] text-[var(--muted-foreground)]">
+                  AI rus tilidagi savollarga shu fayldan javob beradi.
+                </p>
+              </div>
+            </div>
           </div>
 
           {/* Pricing */}

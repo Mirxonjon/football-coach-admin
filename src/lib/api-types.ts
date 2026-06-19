@@ -155,6 +155,8 @@ export type Book = {
   descriptionUz: string;
   descriptionRu: string;
   fileUrl: string;
+  fileUrlUz?: string | null;
+  fileUrlRu?: string | null;
   coverImageUrl?: string | null;
   tacticHintImg?: string | null;
   basePrice: number;

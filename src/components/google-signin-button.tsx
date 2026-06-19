@@ -77,11 +77,22 @@ export function GoogleSignInButton({
   const [err, setErr] = useState<string | null>(null);
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
+  // Hold the latest callback in a ref so the init effect can stay dependency-
+  // free. Re-running `initialize()` on every parent re-render triggers
+  // "google.accounts.id.initialize() is called multiple times" and races One
+  // Tap calls into FedCM NotAllowedError.
+  const onCredentialRef = useRef(onCredential);
+  useEffect(() => {
+    onCredentialRef.current = onCredential;
+  }, [onCredential]);
+  const autoSelectRef = useRef(autoSelect);
+  useEffect(() => {
+    autoSelectRef.current = autoSelect;
+  }, [autoSelect]);
+
   useEffect(() => {
     if (!clientId) {
-      setErr(
-        "NEXT_PUBLIC_GOOGLE_CLIENT_ID .env faylda sozlanmagan"
-      );
+      setErr("NEXT_PUBLIC_GOOGLE_CLIENT_ID .env faylda sozlanmagan");
       return;
     }
     let cancelled = false;
@@ -92,9 +103,9 @@ export function GoogleSignInButton({
         window.google.accounts.id.initialize({
           client_id: clientId,
           callback: (r) => {
-            if (r.credential) onCredential(r.credential);
+            if (r.credential) onCredentialRef.current(r.credential);
           },
-          auto_select: autoSelect,
+          auto_select: autoSelectRef.current,
           ux_mode: "popup",
           cancel_on_tap_outside: false,
         });
@@ -107,8 +118,10 @@ export function GoogleSignInButton({
           width: 320,
           locale: "uz",
         });
-        if (autoSelect) {
-          // One Tap — returning users get signed in without clicking
+        if (autoSelectRef.current) {
+          // One Tap — returning users get signed in without clicking.
+          // Skipped when autoSelect={false} so manual login pages don't
+          // race FedCM and produce NetworkError / NotAllowedError.
           window.google.accounts.id.prompt();
         }
       })
@@ -117,7 +130,9 @@ export function GoogleSignInButton({
     return () => {
       cancelled = true;
     };
-  }, [clientId, onCredential, autoSelect]);
+    // Init exactly once per mount — keep deps minimal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientId]);
 
   if (err) {
     return (
